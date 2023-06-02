@@ -54,7 +54,7 @@ def get_demos_forward_cot(df, id):
     return examples
 
 
-def get_test_example_cot(df, id, negate, random_order, seed):
+def get_test_example_cot(df, id, negate, random_order, seed, get_demos, k):
     demo_dict = df.iloc[id][f"test_example"]
     facts_and_rules = demo_dict["question"]
 
@@ -66,7 +66,12 @@ def get_test_example_cot(df, id, negate, random_order, seed):
     if negate:
         query = negate_query(query)
 
-    return dsp.Example(facts_and_rules=facts_and_rules, query=query)
+    demos = []
+    if k > 0:
+        demos = get_demos(df, id)
+        demos = dsp.sample(demos, k=k)
+
+    return dsp.Example(facts_and_rules=facts_and_rules, query=query, demos=demos)
 
 
 def get_test_answer_forward_cot(df, id, negate=False):
@@ -103,6 +108,12 @@ def randomize_order(question, seed):
     new_question = ' '.join(parts)
 
     return new_question
+
+
+def print_template_example(df, id, template, get_demos, get_test_example, negate, random_order, seed, k):
+    ex = get_test_example(df, id, negate, random_order, seed, get_demos=get_demos, k=k)
+
+    print(template(ex))
 
 
 

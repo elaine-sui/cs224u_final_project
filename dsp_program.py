@@ -14,7 +14,7 @@ def generic_dsp(
     random_order=False,
     seed=1234
 ):
-    example = get_test_example(df, id, negate, random_order, seed)
+    example = get_test_example(df, id, negate, random_order, seed, get_demos, k)
 
     if k > 0:
         demos = get_demos(df, id)

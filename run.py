@@ -12,24 +12,25 @@ import prompts
 
 root_path = "."
 os.environ["DSP_NOTEBOOK_CACHEDIR"] = os.path.join(root_path, "cache")
-OPENAI_API_KEY = os.getenv(
-    "OPENAI_API_KEY"
-)  # or replace with your API key (optional)
+OPENAI_API_KEY = "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"
+# OPENAI_API_KEY = os.getenv(
+#     "OPENAI_API_KEY"
+# )  # or replace with your API key (optional)
 
 PROMPT_TYPES = ["forward", "backward", "baseline"]
 
 
 def get_functions(args):
     if args.prompt_type == "forward":
-        template = prompts.forward_template
+        template = prompts.forward_template()
         get_demos = utils.get_demos_forward_cot
         get_test_answer = utils.get_test_answer_forward_cot
     elif args.prompt_type == "backward":
-        template = prompts.backward_template
+        template = prompts.backward_template()
         get_demos = utils.get_demos_backward_cot
         get_test_answer = utils.get_test_answer_backward_cot
     elif args.prompt_type == "baseline":
-        template = prompts.baseline_template
+        template = prompts.baseline_template()
         get_demos = utils.get_demos_forward_cot
         get_test_answer = utils.get_test_answer_forward_cot
     else:
@@ -71,6 +72,8 @@ def parse_args():
     parser.add_argument("--temperature", type=float, default=0.)
 
     parser.add_argument("--test_mini_batch", action="store_true", help="whether to test forward pass on mini batch first")
+
+    parser.add_argument("--k", type=int, default=0, help="number of few-shot examples")
 
     args = parser.parse_args()
 
@@ -153,9 +156,11 @@ def sample_completion(
 def main(args):
     with open(args.data_file, "rb") as f:
         data_df = pickle.load(f)
+    
+    data_df = data_df.reset_index(drop=True)
 
     filename = args.prompt_type
-    if args.negated:
+    if args.negate:
         filename += "_negated"
     if args.randomized_order:
         filename += "_randomized_order"
@@ -165,28 +170,34 @@ def main(args):
     filename += f"_seed_{args.seed}" 
     out_file = os.path.join(args.output_dir, filename)
 
-    template, get_demos, get_test_example, get_test_answer = get_functions(args)
+    template, get_demos, get_test_answer, get_test_example = get_functions(args)
+
+    utils.print_template_example(data_df, 0, template, get_demos, get_test_example, args.negate, args.randomized_order, args.seed, k=args.k)
 
     if args.test_mini_batch:
-        num_total = 3
+        num_total = 1
+        data_df = data_df[data_df['num_hops'] == 5].sample(frac=1).reset_index(drop=True)
     else:
         num_total = len(data_df)
 
     out_df = sample_completion(
         start=0,
         num_total=num_total,
-        k=0,
+        k=args.k,
         df=data_df,
         template=template,
-        get_demos=None,  # should be able to be None since k = 0, but if not, put get_demos
+        get_demos=get_demos,
         get_test_example=get_test_example,
         get_test_answer=get_test_answer,
         out_file=out_file,
         negate=args.negate,
         random_order=args.randomized_order,
         seed=args.seed,
+        temperature=args.temperature,
         verbose=False,
     )
+
+    import pdb; pdb.set_trace()
 
 
 if __name__ == "__main__":
