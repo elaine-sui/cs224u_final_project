@@ -1,5 +1,5 @@
+import random
 import dsp
-
 
 def negate_query(sentence):
     words = sentence.split()
@@ -54,9 +54,13 @@ def get_demos_forward_cot(df, id):
     return examples
 
 
-def get_test_example_cot(df, id, negate):
+def get_test_example_cot(df, id, negate, random_order, seed):
     demo_dict = df.iloc[id][f"test_example"]
     facts_and_rules = demo_dict["question"]
+
+    if random_order:
+        facts_and_rules = randomize_order(facts_and_rules, seed)
+
     query = demo_dict["query"]
 
     if negate:
@@ -91,3 +95,15 @@ def get_test_answer_backward_cot(df, id, negate=False):
             answer = "True"
 
     return " ".join(cot), answer
+
+
+def randomize_order(question, seed):
+    parts = ' '.split(question)
+    random.Random(seed).shuffle(parts)
+    new_question = ' '.join(parts)
+
+    return new_question
+
+
+
+

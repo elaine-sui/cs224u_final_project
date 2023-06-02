@@ -11,8 +11,10 @@ def generic_dsp(
     k=2,
     temperature=0.0,
     negate=False,
+    random_order=False,
+    seed=1234
 ):
-    example = get_test_example(df, id, negate)
+    example = get_test_example(df, id, negate, random_order, seed)
 
     if k > 0:
         demos = get_demos(df, id)

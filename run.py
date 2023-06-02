@@ -20,18 +20,16 @@ PROMPT_TYPES = ["forward", "backward"]
 
 
 def get_functions(args):
-    # TODO: add appropriate getters for randomized order (forward + backward)
-    if not args.negated and not args.randomized_order:
-        if args.prompt_type == "forward":
-            template = prompts.forward_template
-            get_demos = utils.get_demos_forward_cot
-            get_test_answer = utils.get_test_answer_forward_cot
-        else:
-            template = prompts.backward_template
-            get_demos = utils.get_demos_backward_cot
-            get_test_answer = utils.get_test_answer_backward_cot
+    if args.prompt_type == "forward":
+        template = prompts.forward_template
+        get_demos = utils.get_demos_forward_cot
+        get_test_answer = utils.get_test_answer_forward_cot
+    else:
+        template = prompts.backward_template
+        get_demos = utils.get_demos_backward_cot
+        get_test_answer = utils.get_test_answer_backward_cot
 
-        get_test_example = utils.get_test_example_cot
+    get_test_example = utils.get_test_example_cot
 
     return template, get_demos, get_test_answer, get_test_example
 
@@ -84,6 +82,8 @@ def sample_completion(
     get_test_answer,
     out_file,
     negate,
+    random_order,
+    seed,
     verbose=False,
 ):
     # return df of [id, num_hops, test_example, predicted_cot, predicted_answer, gold_cot, gold_answer]
@@ -100,6 +100,8 @@ def sample_completion(
             get_demos=get_demos,
             get_test_example=get_test_example,
             negate=negate,
+            random_order=random_order,
+            seed=seed
         )
 
         predicted_answer = completion.answer
@@ -134,7 +136,7 @@ def sample_completion(
         pickle.dump(out_df, f)
 
     print(f"Dumped completions to {out_file}")
-    return df
+    return out_df
 
 
 def main(args):
@@ -162,6 +164,8 @@ def main(args):
         get_test_answer=get_test_answer,
         out_file=out_file,
         negate=args.negate,
+        random_order=args.randomized_order,
+        seed=args.seed,
         verbose=False,
     )
 
