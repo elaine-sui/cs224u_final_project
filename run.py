@@ -63,6 +63,8 @@ def parse_args():
 
     parser.add_argument("--openai_model", type=str, default="text-davinci-003")
 
+    parser.add_argument("--test_mini_batch", action="store_true", help="whether to test forward pass on mini batch first")
+
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -153,9 +155,15 @@ def main(args):
     out_file = os.path.join(args.output_dir, filename)
 
     template, get_demos, get_test_example, get_test_answer = get_functions(args)
+
+    if args.test_mini_batch:
+        num_total = 3
+    else:
+        num_total = len(data_df)
+
     out_df = sample_completion(
         start=0,
-        num_total=len(data_df),
+        num_total=num_total,
         k=0,
         df=data_df,
         template=template,
