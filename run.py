@@ -160,7 +160,9 @@ def main(args):
     if args.randomized_order:
         filename += "_randomized_order"
 
-    filename += f"_seed_{args.seed}"
+    # note: seed is really only used for randomizing order of facts/rules. 
+    # but it also serves to differentiate between different runs
+    filename += f"_seed_{args.seed}" 
     out_file = os.path.join(args.output_dir, filename)
 
     template, get_demos, get_test_example, get_test_answer = get_functions(args)
