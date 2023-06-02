@@ -68,6 +68,7 @@ def parse_args():
     )
 
     parser.add_argument("--openai_model", type=str, default="text-davinci-003")
+    parser.add_argument("--temperature", type=float, default=0.)
 
     parser.add_argument("--test_mini_batch", action="store_true", help="whether to test forward pass on mini batch first")
 
@@ -92,6 +93,7 @@ def sample_completion(
     negate,
     random_order,
     seed,
+    temperature,
     verbose=False,
 ):
     # return df of [id, num_hops, test_example, predicted_cot, predicted_answer, gold_cot, gold_answer]
@@ -109,7 +111,8 @@ def sample_completion(
             get_test_example=get_test_example,
             negate=negate,
             random_order=random_order,
-            seed=seed
+            seed=seed,
+            temperature=temperature
         )
 
         predicted_answer = completion.answer
