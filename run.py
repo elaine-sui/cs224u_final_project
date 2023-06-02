@@ -144,7 +144,7 @@ def sample_completion(
         completions.append(data)
 
         # Batch save
-        if i > 0 and i % 100 == 0:
+        if i > 0 and i % 50 == 0:
             out_file_temp = out_file[:-4] + f"_{i}.pkl"
             out_df = pd.DataFrame(completions)
             with open(out_file_temp, "wb") as f:
@@ -172,6 +172,10 @@ def main(args):
         filename += "_negated"
     if args.randomized_order:
         filename += "_randomized_order"
+    
+    filename += f"_{args.k}_shot"
+
+    filename += f"_temp_{args.temperature}"
 
     # note: seed is really only used for randomizing order of facts/rules. 
     # but it also serves to differentiate between different runs
