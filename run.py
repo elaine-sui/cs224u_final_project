@@ -12,10 +12,9 @@ import prompts
 
 root_path = "."
 os.environ["DSP_NOTEBOOK_CACHEDIR"] = os.path.join(root_path, "cache")
-OPENAI_API_KEY = "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"
-# OPENAI_API_KEY = os.getenv(
-#     "OPENAI_API_KEY"
-# )  # or replace with your API key (optional)
+OPENAI_API_KEY = os.getenv(
+    "OPENAI_API_KEY"
+)  # or replace with your API key (optional)
 
 PROMPT_TYPES = ["forward", "backward", "baseline"]
 
@@ -101,7 +100,7 @@ def sample_completion(
 ):
     # return df of [id, num_hops, test_example, predicted_cot, predicted_answer, gold_cot, gold_answer]
     completions = []
-    for id in tqdm(range(start, start + num_total)):
+    for i, id in tqdm(enumerate(range(start, start + num_total))):
         if verbose:
             print(id)
 
@@ -144,6 +143,15 @@ def sample_completion(
 
         completions.append(data)
 
+        # Batch save
+        if i > 0 and i % 100 == 0:
+            out_file_temp = out_file[:-4] + f"_{i}.pkl"
+            out_df = pd.DataFrame(completions)
+            with open(out_file_temp, "wb") as f:
+                pickle.dump(out_df, f)
+            
+            print(f"Dumped partial (i={i}) completions to {out_file_temp}")
+
     out_df = pd.DataFrame(completions)
 
     with open(out_file, "wb") as f:
@@ -168,7 +176,7 @@ def main(args):
     # note: seed is really only used for randomizing order of facts/rules. 
     # but it also serves to differentiate between different runs
     filename += f"_seed_{args.seed}" 
-    out_file = os.path.join(args.output_dir, filename)
+    out_file = os.path.join(args.output_dir, filename + ".pkl")
 
     template, get_demos, get_test_answer, get_test_example = get_functions(args)
 
@@ -196,8 +204,6 @@ def main(args):
         temperature=args.temperature,
         verbose=False,
     )
-
-    import pdb; pdb.set_trace()
 
 
 if __name__ == "__main__":
