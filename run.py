@@ -16,7 +16,7 @@ OPENAI_API_KEY = os.getenv(
     "OPENAI_API_KEY"
 )  # or replace with your API key (optional)
 
-PROMPT_TYPES = ["forward", "backward"]
+PROMPT_TYPES = ["forward", "backward", "baseline"]
 
 
 def get_functions(args):
@@ -24,10 +24,16 @@ def get_functions(args):
         template = prompts.forward_template
         get_demos = utils.get_demos_forward_cot
         get_test_answer = utils.get_test_answer_forward_cot
-    else:
+    elif args.prompt_type == "backward":
         template = prompts.backward_template
         get_demos = utils.get_demos_backward_cot
         get_test_answer = utils.get_test_answer_backward_cot
+    elif args.prompt_type == "baseline":
+        template = prompts.baseline_template
+        get_demos = utils.get_demos_forward_cot
+        get_test_answer = utils.get_test_answer_forward_cot
+    else:
+        raise NotImplementedError(f"prompt type {args.prompt_type} not implemented!")
 
     get_test_example = utils.get_test_example_cot
 
