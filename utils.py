@@ -1,6 +1,7 @@
 import random
 import dsp
 
+
 def negate_query(sentence):
     words = sentence.split()
     if "not" in words:
@@ -54,12 +55,12 @@ def get_demos_forward_cot(df, id):
     return examples
 
 
-def get_test_example_cot(df, id, negate, random_order, seed, get_demos, k):
+def get_test_example_cot(df, id, negate, random_order, get_demos, k):
     demo_dict = df.iloc[id][f"test_example"]
     facts_and_rules = demo_dict["question"]
 
     if random_order:
-        facts_and_rules = randomize_order(facts_and_rules, seed)
+        facts_and_rules = randomize_order(facts_and_rules)
 
     query = demo_dict["query"]
 
@@ -71,7 +72,9 @@ def get_test_example_cot(df, id, negate, random_order, seed, get_demos, k):
         demos = get_demos(df, id)
         demos = dsp.sample(demos, k=k)
 
-    return dsp.Example(facts_and_rules=facts_and_rules, query=query, demos=demos)
+    return dsp.Example(
+        facts_and_rules=facts_and_rules, query=query, demos=demos
+    )
 
 
 def get_test_answer_forward_cot(df, id, negate=False):
@@ -102,19 +105,19 @@ def get_test_answer_backward_cot(df, id, negate=False):
     return " ".join(cot), answer
 
 
-def randomize_order(question, seed):
-    parts = ' '.split(question)
-    random.Random(seed).shuffle(parts)
-    new_question = ' '.join(parts)
+def randomize_order(question):
+    parts = " ".split(question)
+    random.shuffle(parts)
+    new_question = " ".join(parts)
 
     return new_question
 
 
-def print_template_example(df, id, template, get_demos, get_test_example, negate, random_order, seed, k):
-    ex = get_test_example(df, id, negate, random_order, seed, get_demos=get_demos, k=k)
+def print_template_example(
+    df, id, template, get_demos, get_test_example, negate, random_order, seed, k
+):
+    ex = get_test_example(
+        df, id, negate, random_order, get_demos=get_demos, k=k
+    )
 
     print(template(ex))
-
-
-
-

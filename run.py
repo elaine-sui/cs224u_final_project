@@ -4,6 +4,8 @@ import pickle
 import os
 import dsp
 from tqdm import tqdm
+import numpy as np
+import random
 
 from dsp_program import generic_dsp
 import utils
@@ -33,7 +35,9 @@ def get_functions(args):
         get_demos = utils.get_demos_forward_cot
         get_test_answer = utils.get_test_answer_forward_cot
     else:
-        raise NotImplementedError(f"prompt type {args.prompt_type} not implemented!")
+        raise NotImplementedError(
+            f"prompt type {args.prompt_type} not implemented!"
+        )
 
     get_test_example = utils.get_test_example_cot
 
@@ -43,36 +47,50 @@ def get_functions(args):
 def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--prompt_type", type=str, default="forward", choices=PROMPT_TYPES
+        "--prompt-type",
+        "-pt",
+        type=str,
+        default="forward",
+        choices=PROMPT_TYPES,
     )
     parser.add_argument(
         "--negate",
+        "-n",
         action="store_true",
         help="whether to negate query",
         default=False,
     )
     parser.add_argument(
-        "--randomized_order",
+        "--randomized-order",
         action="store_true",
         help="whether to randomize order of facts and rules",
     )
-    parser.add_argument("--seed", type=int, default=1234, help="random seed")
+    parser.add_argument(
+        "--seed", type=int, default=1234, help="random seed. Pass 0 for no seed"
+    )
     parser.add_argument("--dataset", type=str, default="prontoqa_fictional")
     parser.add_argument(
-        "--data_file",
+        "--data-file",
         type=str,
         default="prontoqa_data/fictional/sampled_data.pkl",
     )
     parser.add_argument(
-        "--output_dir", type=str, default="prontoqa_output/fictional"
+        "--output-dir", type=str, default="prontoqa_output/fictional"
     )
 
     parser.add_argument("--openai_model", type=str, default="text-davinci-003")
-    parser.add_argument("--temperature", type=float, default=0.)
+    parser.add_argument("--temperature", type=float, default=0.0)
 
-    parser.add_argument("--test_mini_batch", action="store_true", help="whether to test forward pass on mini batch first")
+    parser.add_argument(
+        "--test-mini-batch",
+        "-tmb",
+        action="store_true",
+        help="whether to test forward pass on mini batch first",
+    )
 
-    parser.add_argument("--k", type=int, default=0, help="number of few-shot examples")
+    parser.add_argument(
+        "--k", type=int, default=0, help="number of few-shot examples"
+    )
 
     args = parser.parse_args()
 
@@ -94,13 +112,12 @@ def sample_completion(
     out_file,
     negate,
     random_order,
-    seed,
     temperature,
     verbose=False,
 ):
     # return df of [id, num_hops, test_example, predicted_cot, predicted_answer, gold_cot, gold_answer]
     completions = []
-    for i, id in tqdm(enumerate(range(start, start + num_total))):
+    for i, id in enumerate(tqdm(range(start, start + num_total))):
         if verbose:
             print(id)
 
@@ -113,8 +130,7 @@ def sample_completion(
             get_test_example=get_test_example,
             negate=negate,
             random_order=random_order,
-            seed=seed,
-            temperature=temperature
+            temperature=temperature,
         )
 
         predicted_answer = completion.answer
@@ -134,7 +150,9 @@ def sample_completion(
         data = {
             "id": df.iloc[id]["id"],
             "num_hops": df.iloc[id]["num_hops"],
-            "test_example": df.iloc[id]["test_example"],
+            "test_example": df.iloc[id][
+                "test_example"
+            ],  # note that this is the original question and not negated or with randomized fact order.
             "predicted_cot": predicted_cot,
             "predicted_answer": predicted_answer,
             "gold_cot": gold_cot,
@@ -149,7 +167,7 @@ def sample_completion(
             out_df = pd.DataFrame(completions)
             with open(out_file_temp, "wb") as f:
                 pickle.dump(out_df, f)
-            
+
             print(f"Dumped partial (i={i}) completions to {out_file_temp}")
 
     out_df = pd.DataFrame(completions)
@@ -164,7 +182,12 @@ def sample_completion(
 def main(args):
     with open(args.data_file, "rb") as f:
         data_df = pickle.load(f)
-    
+
+    # Set seed
+    if args.seed:
+        np.random.seed(args.seed)
+        random.seed(args.seed)
+
     data_df = data_df.reset_index(drop=True)
 
     filename = args.prompt_type
@@ -172,23 +195,37 @@ def main(args):
         filename += "_negated"
     if args.randomized_order:
         filename += "_randomized_order"
-    
+
     filename += f"_{args.k}_shot"
 
     filename += f"_temp_{args.temperature}"
 
-    # note: seed is really only used for randomizing order of facts/rules. 
+    # note: seed is really only used for randomizing order of facts/rules.
     # but it also serves to differentiate between different runs
-    filename += f"_seed_{args.seed}" 
+    filename += f"_seed_{args.seed}"
     out_file = os.path.join(args.output_dir, filename + ".pkl")
 
     template, get_demos, get_test_answer, get_test_example = get_functions(args)
 
-    utils.print_template_example(data_df, 0, template, get_demos, get_test_example, args.negate, args.randomized_order, args.seed, k=args.k)
+    utils.print_template_example(
+        data_df,
+        0,
+        template,
+        get_demos,
+        get_test_example,
+        args.negate,
+        args.randomized_order,
+        args.seed,
+        k=args.k,
+    )
 
     if args.test_mini_batch:
         num_total = 1
-        data_df = data_df[data_df['num_hops'] == 5].sample(frac=1).reset_index(drop=True)
+        data_df = (
+            data_df[data_df["num_hops"] == 5]
+            .sample(frac=1)
+            .reset_index(drop=True)
+        )
     else:
         num_total = len(data_df)
 
@@ -204,7 +241,6 @@ def main(args):
         out_file=out_file,
         negate=args.negate,
         random_order=args.randomized_order,
-        seed=args.seed,
         temperature=args.temperature,
         verbose=False,
     )
