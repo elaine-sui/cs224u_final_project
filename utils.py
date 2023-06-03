@@ -106,9 +106,9 @@ def get_test_answer_backward_cot(df, id, negate=False):
 
 
 def randomize_order(question):
-    parts = " ".split(question)
+    parts = question.split('. ')
     random.shuffle(parts)
-    new_question = " ".join(parts)
+    new_question = ". ".join(parts).replace('..', '.')
 
     return new_question
 
