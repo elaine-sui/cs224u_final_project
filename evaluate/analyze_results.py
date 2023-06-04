@@ -39,8 +39,11 @@ def get_count(result_array, index):
 def analyze_output_df(output_df_path):
 	with open(output_df_path, "rb") as f:
 		output_df = pickle.load(f)
+		backward = 'backward' in output_df_path
+		negated = 'negated' in output_df_path
+
 		parse_errors = []
-		results, parse_errors = parse_output_df(output_df)
+		results, parse_errors = parse_output_df(output_df, backward=backward, negated=negated)
 		if len(parse_errors) != 0:
 			print('There were errors during semantic parsing for results in file ' + output_df_path + ':')
 			for sentence, e in parse_errors:
