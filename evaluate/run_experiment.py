@@ -657,9 +657,11 @@ def parse_output_df(output_df, backward=False, negated=False):
 	parse_errors = []
 	proofs_only = False
 	for i, row in output_df.iterrows():
-		expected_label = row['test_example']['answer']
-		expected_proof = ' '.join(row['test_example']['chain_of_thought'])
-		print(f"Expected proof: {expected_proof}")
+		assert row['gold_answer'] == row['test_example']['answer']
+		expected_label = row['gold_answer'] 
+		assert row['gold_cot'] == ' '.join(row['test_example']['chain_of_thought'])
+		expected_proof = row['gold_cot'] 
+		# print(f"Expected proof: {expected_proof}")
 
 		query = row['test_example']['query'].split(":")[-1].strip()
 		gold_cot_conclusion = negate_query(row['test_example']['chain_of_thought'][-1])
@@ -693,9 +695,12 @@ def parse_output_df(output_df, backward=False, negated=False):
 			# print(f"Predicted proof after negated: {predicted_proof}")
 
 		errors = []
+		# import pdb; pdb.set_trace()
+		# print(f"Predicted proof: {predicted_proof}")
 		predicted_proof = parse_reasoning(predicted_proof, errors)
 		parse_errors.append(errors)
 
+		# import pdb; pdb.set_trace()
 		result = evaluate_response(predicted_proof, predicted_label, expected_proof, expected_label, parse_reasoning(last_question, parse_errors), proofs_only, parse_errors)
 		results.append(result)
 		# import pdb; pdb.set_trace()
