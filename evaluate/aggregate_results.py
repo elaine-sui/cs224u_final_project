@@ -49,11 +49,31 @@ BASELINE = {
         'baseline_seed910': 'baseline_1_shot_temp_0.7_seed_910.pkl',
     }
 
-def answer_majority(df):
+def answer_majority_unknown(df):
     mode = df.mode(axis = 1)
     na_idx = mode[1].isna()
     mode.loc[~na_idx] = np.nan
     return mode.iloc[:, 0] # TODO: currently outputs "I don't know" a.k.a NaN!
+
+answer_majority = answer_majority_unknown
+
+def evaluate_cot_prop_exact_matches(pred_cot, gold_cot):
+    # Extremely simple CoT checker, checks proportion of facts in prediction that
+    # are in gold.
+    pred_cot = pred_cot.split('. ')
+    gold_cot = gold_cot.split('. ')
+    return pd.Series(pred_cot).isin(gold_cot).mean()
+
+def choose_cot_intersection(*cots):
+    pass # TODO
+
+def choose_cot_union(*cots):
+    return '---'.join(cots)
+
+def choose_cot_longest(*cots):
+    return max(cots, key = len)
+
+choose_cot = choose_cot_longest
 
 def evaluate_randomized_order_answer():
     """
