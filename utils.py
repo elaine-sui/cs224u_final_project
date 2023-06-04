@@ -1,4 +1,5 @@
 import random
+import pandas as pd
 import dsp
 
 
@@ -15,6 +16,30 @@ def negate_query(sentence):
     else:
         raise ValueError(sentence)
     return " ".join(words)
+
+
+def reverse_sentences(text):
+    # Reverse the order of sentences in this string
+    if text[-1] == '.':
+        text = text[:-1]
+    text = text.split('.')[::-1]
+    text = [t.strip() for t in text]
+    text = '. '.join(text).strip()
+    text += "."
+    return text
+
+
+def flip_conclusion_in_cot(proof):
+    if proof[-1] == ".":
+        proof = proof[:-1]
+
+    # Flip the final conclusion in chain-of-thought
+    proof = proof.split('.')
+    proof = [p.strip() for p in proof]
+    proof[-1] = negate_query(proof[-1])
+    proof = '. '.join(proof).strip()
+    proof += "."
+    return proof
 
 
 def get_demos_backward_cot(df, id):
@@ -121,3 +146,10 @@ def print_template_example(
     )
 
     print(template(ex))
+
+
+def aggregate_outputs(output_dfs):
+    pass
+	# aggregated_df = pd.DataFrame(columns=output_dfs[0].columns)
+
+	

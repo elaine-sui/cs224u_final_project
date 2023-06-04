@@ -1,9 +1,11 @@
-# code from https://github.com/asaparov/prontoqa/blob/main/analyze_results.py
-# TODO: clean this up!!
-
 import numpy as np
-from run_experiment import parse_log, parse_response, evaluate_response, parse_reasoning
-from sys import argv
+from run_experiment import parse_output_df, parse_response, evaluate_response, parse_reasoning
+from syntax import UnableToParseError, AmbiguousParseError
+from sys import argv, exit
+import pickle
+import os
+
+OUTPUT_ROOT = "prontoqa_output/fictional/summary"
 
 # see https://www.mikulskibartosz.name/wilson-score-in-python-example/
 def wilson_conf_interval(p, n, z=1.96):
@@ -15,6 +17,16 @@ def wilson_conf_interval(p, n, z=1.96):
 	upper_bound = (center_adjusted_probability + z*adjusted_standard_deviation) / denominator
 	return (lower_bound, upper_bound)
 
+def lighten_color(color, amount=0.5):
+	import matplotlib.colors as mc
+	import colorsys
+	try:
+		c = mc.cnames[color]
+	except:
+		c = color
+	c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+	return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
+
 def get_count(result_array, index):
 	if index < 2:
 		return result_array[index]
@@ -24,58 +36,21 @@ def get_count(result_array, index):
 		else:
 			return result_array[1] + result_array[index]
 
-def analyze_log(logfile):
-	with open(logfile, "r") as log:
-		if logfile.endswith(".json"):
-			import json
-			results = []
-			proofs_only = False
-			first_example = True
-			try:
-				json_data = json.load(log)
-			except json.JSONDecodeError:
-				# try reading as JSONL
-				log.seek(0)
-				json_data = {}
-				index = 1
-				for line in log:
-					json_data['example' + str(index)] = json.loads(line)
-					index += 1
-			log.close()
-			for key, value in json_data.items():
-				example_id = int(key[len("example"):])
-				last_question = value["test_example"]["question"] + " " + value["test_example"]["query"]
-				expected_answer = " ".join(value["test_example"]["chain_of_thought"])
-				if "model_output" in value["test_example"]:
-					predicted_answer = value["test_example"]["model_output"]
-				elif "model_output" in value:
-					predicted_answer = value["model_output"]
+def analyze_output_df(output_df_path):
+	with open(output_df_path, "rb") as f:
+		output_df = pickle.load(f)
+		parse_errors = []
+		results, parse_errors = parse_output_df(output_df)
+		if len(parse_errors) != 0:
+			print('There were errors during semantic parsing for results in file ' + output_df_path + ':')
+			for sentence, e in parse_errors:
+				if type(e) in [UnableToParseError, AmbiguousParseError]:
+					print('  Error parsing {}: {}'.format(sentence, e))
 				else:
-					print("ERROR: Example {} is missing model output.".format(example_id))
-					continue
-
-				if type(predicted_answer) == list and len(predicted_answer) == 1:
-					predicted_answer = predicted_answer[0]
-
-				try:
-					if not first_example and proofs_only:
-						raise ValueError("Log contains examples generated with and without 'proofs-only'.")
-					last_question = last_question[:last_question.index('True or false:')]
-				except ValueError:
-					if not first_example and not proofs_only:
-						raise ValueError("Log contains examples generated with and without 'proofs-only'.")
-					last_question = last_question[:last_question.index('Prove:')]
-					proofs_only = True
-
-				(predicted_proof, predicted_label) = parse_response(predicted_answer)
-				result = evaluate_response(predicted_proof, predicted_label, expected_answer, parse_reasoning(last_question))
-
-				while example_id > len(results):
-					results.append(None)
-				results[example_id - 1] = result
-				first_example = False
-		else:
-			(_, _, results, _, _) = parse_log(log)
+					import traceback
+					print('  Error parsing {}: '.format(sentence))
+					traceback.print_exception(e)
+			exit(1)
 
 	# collect incorrect steps
 	all_correct_steps = []
@@ -147,9 +122,11 @@ def analyze_log(logfile):
 	non_atomic_step_count = 0
 	skip_step_count = 0
 	invalid_step_count = 0
+	perplexities = []
+	fully_correct_proofs = 0
 	for result in results:
 		question_id += 1
-		(label, expected_label, correct_steps, correct_and_useful_steps, redundant_steps, unparseable_steps, wrong_branch_steps, useful_skip_steps, wrong_skip_steps, useful_non_atomic_steps, wrong_non_atomic_steps, invalid_steps, incorrect_steps, found_conclusion, found_conclusion_with_skip_steps, found_conclusion_with_non_atomic_steps) = result
+		(label, expected_label, correct_steps, correct_and_useful_steps, redundant_steps, unparseable_steps, wrong_branch_steps, useful_skip_steps, wrong_skip_steps, useful_non_atomic_steps, wrong_non_atomic_steps, invalid_steps, incorrect_steps, found_conclusion, found_conclusion_with_skip_steps, found_conclusion_with_non_atomic_steps, logprobs) = result
 		all_correct_steps.extend(correct_steps)
 		correct_step_count += len(correct_steps)
 		non_atomic_step_count += len(useful_non_atomic_steps) + len(wrong_non_atomic_steps)
@@ -211,7 +188,6 @@ def analyze_log(logfile):
 		if len(wrong_branch_steps) == 0 and len(useful_skip_steps) == 0 and len(wrong_skip_steps) == 0 and len(useful_non_atomic_steps) == 0 and len(wrong_non_atomic_steps) != 0 and len(incorrect_steps) == 0:
 			increment_count(contains_wrong_non_atomic_step)
 		if len(wrong_branch_steps) == 0 and len(useful_skip_steps) == 0 and len(wrong_skip_steps) == 0 and len(useful_non_atomic_steps) == 0 and len(wrong_non_atomic_steps) == 0 and len(incorrect_steps) != 0:
-			print('Proof with ID {} only has invalid steps.'.format(question_id))
 			increment_count(contains_invalid_step)
 
 		if len(wrong_branch_steps) != 0:
@@ -274,6 +250,8 @@ def analyze_log(logfile):
 			proof_lengths.append(0)
 		else:
 			proof_lengths.append(max(correct_steps + redundant_steps + incorrect_steps) + 1)
+		if len(correct_steps) + len(useful_non_atomic_steps) + len(wrong_non_atomic_steps) + len(useful_skip_steps) + len(wrong_skip_steps) == proof_lengths[-1]:
+			fully_correct_proofs += 1
 
 		# count the number of steps after a wrong branch step before a correct step
 		if found_conclusion_with_skip_or_non_atomic_steps and len(wrong_branch_steps) > 0:
@@ -287,10 +265,22 @@ def analyze_log(logfile):
 		else:
 			correct_labels += label
 
-	return (len(results), proof_lengths, correct_labels, expected_label_true, correct_step_count, non_atomic_step_count, skip_step_count, invalid_step_count, all_correct_and_useful_steps, all_redundant_steps, all_unparseable_steps, all_incorrect_steps, contains_correct_proof, does_not_contain_correct_proof, contains_wrong_branch, contains_useful_skip_step, contains_wrong_skip_step, contains_useful_non_atomic_step, contains_wrong_non_atomic_step, contains_invalid_step, contains_wrong_branch_or_useful_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_step, contains_wrong_branch_or_invalid_step, contains_wrong_branch_or_useful_non_atomic_or_invalid_step, contains_wrong_branch_or_skip_step_or_non_atomic_step_or_invalid_step, contains_wrong_branch_or_useful_skip_step, contains_wrong_branch_or_wrong_skip_step, contains_useful_skip_or_wrong_skip_step, contains_useful_skip_or_useful_non_atomic_step, contains_useful_skip_or_wrong_non_atomic_step, contains_useful_skip_or_invalid_step, contains_wrong_skip_or_useful_non_atomic_step, contains_wrong_skip_or_wrong_non_atomic_step, contains_wrong_skip_or_invalid_step, contains_useful_non_atomic_or_wrong_non_atomic_step, contains_useful_non_atomic_or_invalid_step, contains_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_or_invalid_step, contains_correct_proof_with_skip_step, contains_correct_proof_with_non_atomic_step, contains_correct_proof_with_skip_step_or_non_atomic_step, wrong_branch_first, useful_skip_step_first, wrong_skip_step_first, useful_non_atomic_step_first, wrong_non_atomic_step_first, invalid_step_first, contains_any_wrong_branch, contains_any_useful_skip_step, contains_any_wrong_skip_step, contains_any_useful_non_atomic_step, contains_any_wrong_non_atomic_step, contains_any_invalid_step, wrong_branch_lengths, labels, correct_proofs, correct_proofs_with_skip_steps, correct_proofs_with_non_atomic_steps, correct_proofs_with_skip_or_non_atomic_steps)
+		if logprobs != None:
+			answer_index = 0
+			for i in range(len(logprobs['tokens'])-1, 2, -1):
+				if logprobs['tokens'][(i-4):(i-1)] == ['\n', 'A', ':']:
+					answer_index = i
+					break
+			answer_logprobs = logprobs['token_logprobs'][answer_index:]
+			perplexities.append(np.exp(-np.sum(answer_logprobs) / len(answer_logprobs)))
+		else:
+			perplexities.append(float('NaN'))
+	return (len(results), proof_lengths, correct_labels, expected_label_true, correct_step_count, non_atomic_step_count, skip_step_count, invalid_step_count, all_correct_and_useful_steps, all_redundant_steps, all_unparseable_steps, all_incorrect_steps, contains_correct_proof, does_not_contain_correct_proof, contains_wrong_branch, contains_useful_skip_step, contains_wrong_skip_step, contains_useful_non_atomic_step, contains_wrong_non_atomic_step, contains_invalid_step, contains_wrong_branch_or_useful_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_step, contains_wrong_branch_or_invalid_step, contains_wrong_branch_or_useful_non_atomic_or_invalid_step, contains_wrong_branch_or_skip_step_or_non_atomic_step_or_invalid_step, contains_wrong_branch_or_useful_skip_step, contains_wrong_branch_or_wrong_skip_step, contains_useful_skip_or_wrong_skip_step, contains_useful_skip_or_useful_non_atomic_step, contains_useful_skip_or_wrong_non_atomic_step, contains_useful_skip_or_invalid_step, contains_wrong_skip_or_useful_non_atomic_step, contains_wrong_skip_or_wrong_non_atomic_step, contains_wrong_skip_or_invalid_step, contains_useful_non_atomic_or_wrong_non_atomic_step, contains_useful_non_atomic_or_invalid_step, contains_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_or_invalid_step, contains_correct_proof_with_skip_step, contains_correct_proof_with_non_atomic_step, contains_correct_proof_with_skip_step_or_non_atomic_step, wrong_branch_first, useful_skip_step_first, wrong_skip_step_first, useful_non_atomic_step_first, wrong_non_atomic_step_first, invalid_step_first, contains_any_wrong_branch, contains_any_useful_skip_step, contains_any_wrong_skip_step, contains_any_useful_non_atomic_step, contains_any_wrong_non_atomic_step, contains_any_invalid_step, wrong_branch_lengths, labels, correct_proofs, correct_proofs_with_skip_steps, correct_proofs_with_non_atomic_steps, correct_proofs_with_skip_or_non_atomic_steps, fully_correct_proofs, perplexities)
 
-if len(argv) > 1:
-	(num_examples, proof_lengths, correct_labels, expected_label_true, correct_step_count, non_atomic_step_count, skip_step_count, invalid_step_count, all_correct_and_useful_steps, all_redundant_steps, all_unparseable_steps, all_incorrect_steps, contains_correct_proof, does_not_contain_correct_proof, contains_wrong_branch, contains_useful_skip_step, contains_wrong_skip_step, contains_useful_non_atomic_step, contains_wrong_non_atomic_step, contains_invalid_step, contains_wrong_branch_or_useful_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_step, contains_wrong_branch_or_invalid_step, contains_wrong_branch_or_useful_non_atomic_or_invalid_step, contains_wrong_branch_or_skip_step_or_non_atomic_step_or_invalid_step, contains_wrong_branch_or_useful_skip_step, contains_wrong_branch_or_wrong_skip_step, contains_useful_skip_or_wrong_skip_step, contains_useful_skip_or_useful_non_atomic_step, contains_useful_skip_or_wrong_non_atomic_step, contains_useful_skip_or_invalid_step, contains_wrong_skip_or_useful_non_atomic_step, contains_wrong_skip_or_wrong_non_atomic_step, contains_wrong_skip_or_invalid_step, contains_useful_non_atomic_or_wrong_non_atomic_step, contains_useful_non_atomic_or_invalid_step, contains_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_or_invalid_step, contains_correct_proof_with_skip_step, contains_correct_proof_with_non_atomic_step, contains_correct_proof_with_skip_step_or_non_atomic_step, wrong_branch_first, useful_skip_step_first, wrong_skip_step_first, useful_non_atomic_step_first, wrong_non_atomic_step_first, invalid_step_first, contains_any_wrong_branch, contains_any_useful_skip_step, contains_any_wrong_skip_step, contains_any_useful_non_atomic_step, contains_any_wrong_non_atomic_step, contains_any_invalid_step, wrong_branch_lengths, labels, correct_proofs, correct_proofs_with_skip_steps, correct_proofs_with_non_atomic_steps, correct_proofs_with_skip_or_non_atomic_steps) = analyze_log(argv[1])
+if __name__ != "__main__":
+	pass
+elif len(argv) > 1:
+	(num_examples, proof_lengths, correct_labels, expected_label_true, correct_step_count, non_atomic_step_count, skip_step_count, invalid_step_count, all_correct_and_useful_steps, all_redundant_steps, all_unparseable_steps, all_incorrect_steps, contains_correct_proof, does_not_contain_correct_proof, contains_wrong_branch, contains_useful_skip_step, contains_wrong_skip_step, contains_useful_non_atomic_step, contains_wrong_non_atomic_step, contains_invalid_step, contains_wrong_branch_or_useful_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_step, contains_wrong_branch_or_invalid_step, contains_wrong_branch_or_useful_non_atomic_or_invalid_step, contains_wrong_branch_or_skip_step_or_non_atomic_step_or_invalid_step, contains_wrong_branch_or_useful_skip_step, contains_wrong_branch_or_wrong_skip_step, contains_useful_skip_or_wrong_skip_step, contains_useful_skip_or_useful_non_atomic_step, contains_useful_skip_or_wrong_non_atomic_step, contains_useful_skip_or_invalid_step, contains_wrong_skip_or_useful_non_atomic_step, contains_wrong_skip_or_wrong_non_atomic_step, contains_wrong_skip_or_invalid_step, contains_useful_non_atomic_or_wrong_non_atomic_step, contains_useful_non_atomic_or_invalid_step, contains_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_or_invalid_step, contains_correct_proof_with_skip_step, contains_correct_proof_with_non_atomic_step, contains_correct_proof_with_skip_step_or_non_atomic_step, wrong_branch_first, useful_skip_step_first, wrong_skip_step_first, useful_non_atomic_step_first, wrong_non_atomic_step_first, invalid_step_first, contains_any_wrong_branch, contains_any_useful_skip_step, contains_any_wrong_skip_step, contains_any_useful_non_atomic_step, contains_any_wrong_non_atomic_step, contains_any_invalid_step, wrong_branch_lengths, labels, correct_proofs, correct_proofs_with_skip_steps, correct_proofs_with_non_atomic_steps, correct_proofs_with_skip_or_non_atomic_steps, fully_correct_proofs, perplexities) = analyze_output_df(argv[1])
 
 	max_proof_length = max(proof_lengths)
 	total_steps = np.sum(proof_lengths)
@@ -299,9 +289,11 @@ if len(argv) > 1:
 	print("Skip steps: {}".format(skip_step_count / total_steps))
 	print("Invalid steps: {}".format(invalid_step_count / total_steps))
 	print("Correct and useful steps: {}".format(len(all_correct_and_useful_steps) / total_steps))
-	print("Redundant steps: {}".format(len(all_redundant_steps) / total_steps))
+	#print("Redundant steps: {}".format(len(all_redundant_steps) / total_steps))
 	print("Unparseable steps: {}".format(len(all_unparseable_steps) / total_steps))
 	print("Incorrect steps: {}".format(len(all_incorrect_steps) / total_steps))
+	print("Perplexity sample mean: {}".format(np.mean(perplexities)))
+	print("Perplexity sample std dev: {}".format(np.std(perplexities)))
 
 	offset = 6
 	strictly_correct_proofs = np.sum(contains_correct_proof)
@@ -314,6 +306,7 @@ if len(argv) > 1:
 	elif offset == 6:
 		num_correct_proofs = strictly_correct_proofs + contains_correct_proof_with_skip_step_or_non_atomic_step
 	print("Proportion of proofs that contain the correct proof: {}".format(num_correct_proofs / num_examples))
+	print("Proportion of proofs that only contain correct, non-atomic, or skip steps: {}".format(fully_correct_proofs / num_examples))
 
 	if correct_labels != None:
 		print("Proof accuracy of examples with label `True`: {}".format(get_count(expected_label_true, offset + 1) / (expected_label_true[0] + expected_label_true[1])))
@@ -372,11 +365,19 @@ if len(argv) > 1:
 		print("Proportion of incorrect proofs where the \"useless non-atomic step\" is the first mistake: {}".format(get_count(wrong_non_atomic_step_first, offset + 0) / (num_examples - num_correct_proofs)))
 		print("Proportion of incorrect proofs where the \"invalid step\" is the first mistake: {}".format(get_count(invalid_step_first, offset + 0) / (num_examples - num_correct_proofs)))
 
+	incorrect_proof_ids_with_skip_steps = []
 	incorrect_proof_ids_with_skip_or_non_atomic_steps = []
+	diff = []
 	for i in range(len(proof_lengths)):
+		if correct_proofs[i] == 0 and correct_proofs_with_skip_steps[i] == 0:
+			incorrect_proof_ids_with_skip_steps.append(i + 1)
+			if correct_proofs_with_skip_or_non_atomic_steps[i] != 0:
+				diff.append(i + 1)
 		if correct_proofs[i] == 0 and correct_proofs_with_skip_or_non_atomic_steps[i] == 0:
-			incorrect_proof_ids_with_skip_or_non_atomic_steps.append(i)
+			incorrect_proof_ids_with_skip_or_non_atomic_steps.append(i + 1)
+	print("incorrect_proof_ids_with_skip_steps: {}".format(incorrect_proof_ids_with_skip_steps))
 	print("incorrect_proof_ids_with_skip_or_non_atomic_steps: {}".format(incorrect_proof_ids_with_skip_or_non_atomic_steps))
+	print("incorrect_proof_ids_with_skip_or_non_atomic_steps \ incorrect_proof_ids_with_skip_steps: {}".format(diff))
 	incorrect_proof_with_only_invalid_steps = []
 
 	if correct_labels != None:
@@ -394,17 +395,8 @@ else:
 		"font.serif": ["Palatino"],
 	})
 
-	def lighten_color(color, amount=0.5):
-		import matplotlib.colors as mc
-		import colorsys
-		try:
-			c = mc.cnames[color]
-		except:
-			c = color
-		c = colorsys.rgb_to_hls(*mc.to_rgb(c))
-		return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
-
-	def make_step_type_plot(chart_title, filename_glob, group_labels, chart_filename, first_error_chart_filename, wrong_branch_lengths_filename, add_bar_legend=False, figure_height=2.4, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.8, show_ylabel=True, show_first_error_ylabel=True, first_error_title=None, subbars=True):
+	def make_step_type_plot(chart_title, filename_glob, group_labels, chart_filename, first_error_chart_filename, wrong_branch_lengths_filename, add_bar_legend=False, figure_height=2.4, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.8, show_ylabel=True, show_first_error_ylabel=True, first_error_title=None):
+		# TODO: edit this!!
 		if type(filename_glob) == str:
 			logfiles = glob.glob(filename_glob)
 		elif type(filename_glob) == list:
@@ -443,7 +435,7 @@ else:
 		offset = 6
 		for logfile in logfiles:
 			print('parsing "{}"'.format(logfile))
-			(num_examples, proof_lengths, correct_labels, expected_label_true, correct_step_count, non_atomic_step_count, skip_step_count, invalid_step_count, all_correct_and_useful_steps, all_redundant_steps, all_unparseable_steps, all_incorrect_steps, contains_correct_proof, does_not_contain_correct_proof, contains_wrong_branch, contains_useful_skip_step, contains_wrong_skip_step, contains_useful_non_atomic_step, contains_wrong_non_atomic_step, contains_invalid_step, contains_wrong_branch_or_useful_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_step, contains_wrong_branch_or_invalid_step, contains_wrong_branch_or_useful_non_atomic_or_invalid_step, contains_wrong_branch_or_skip_step_or_non_atomic_step_or_invalid_step, contains_wrong_branch_or_useful_skip_step, contains_wrong_branch_or_wrong_skip_step, contains_useful_skip_or_wrong_skip_step, contains_useful_skip_or_useful_non_atomic_step, contains_useful_skip_or_wrong_non_atomic_step, contains_useful_skip_or_invalid_step, contains_wrong_skip_or_useful_non_atomic_step, contains_wrong_skip_or_wrong_non_atomic_step, contains_wrong_skip_or_invalid_step, contains_useful_non_atomic_or_wrong_non_atomic_step, contains_useful_non_atomic_or_invalid_step, contains_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_or_invalid_step, contains_correct_proof_with_skip_step, contains_correct_proof_with_non_atomic_step, contains_correct_proof_with_skip_step_or_non_atomic_step, wrong_branch_first, useful_skip_step_first, wrong_skip_step_first, useful_non_atomic_step_first, wrong_non_atomic_step_first, invalid_step_first, contains_any_wrong_branch, contains_any_useful_skip_step, contains_any_wrong_skip_step, contains_any_useful_non_atomic_step, contains_any_wrong_non_atomic_step, contains_any_invalid_step, wrong_branch_lengths, labels, correct_proofs, correct_proofs_with_skip_steps, correct_proofs_with_non_atomic_steps, correct_proofs_with_skip_or_non_atomic_steps) = analyze_log(logfile)
+			(num_examples, proof_lengths, correct_labels, expected_label_true, correct_step_count, non_atomic_step_count, skip_step_count, invalid_step_count, all_correct_and_useful_steps, all_redundant_steps, all_unparseable_steps, all_incorrect_steps, contains_correct_proof, does_not_contain_correct_proof, contains_wrong_branch, contains_useful_skip_step, contains_wrong_skip_step, contains_useful_non_atomic_step, contains_wrong_non_atomic_step, contains_invalid_step, contains_wrong_branch_or_useful_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_step, contains_wrong_branch_or_invalid_step, contains_wrong_branch_or_useful_non_atomic_or_invalid_step, contains_wrong_branch_or_skip_step_or_non_atomic_step_or_invalid_step, contains_wrong_branch_or_useful_skip_step, contains_wrong_branch_or_wrong_skip_step, contains_useful_skip_or_wrong_skip_step, contains_useful_skip_or_useful_non_atomic_step, contains_useful_skip_or_wrong_non_atomic_step, contains_useful_skip_or_invalid_step, contains_wrong_skip_or_useful_non_atomic_step, contains_wrong_skip_or_wrong_non_atomic_step, contains_wrong_skip_or_invalid_step, contains_useful_non_atomic_or_wrong_non_atomic_step, contains_useful_non_atomic_or_invalid_step, contains_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_or_invalid_step, contains_correct_proof_with_skip_step, contains_correct_proof_with_non_atomic_step, contains_correct_proof_with_skip_step_or_non_atomic_step, wrong_branch_first, useful_skip_step_first, wrong_skip_step_first, useful_non_atomic_step_first, wrong_non_atomic_step_first, invalid_step_first, contains_any_wrong_branch, contains_any_useful_skip_step, contains_any_wrong_skip_step, contains_any_useful_non_atomic_step, contains_any_wrong_non_atomic_step, contains_any_invalid_step, wrong_branch_lengths, labels, correct_proofs, correct_proofs_with_skip_steps, correct_proofs_with_non_atomic_steps, correct_proofs_with_skip_or_non_atomic_steps, fully_correct_proofs, total_perplexity) = analyze_log(logfile)
 
 			correct_proof_count = np.sum(contains_correct_proof) + contains_correct_proof_with_skip_step_or_non_atomic_step
 			example_count.append(num_examples)
@@ -550,36 +542,35 @@ else:
 		x6 = [x + bar_width for x in x5]
 
 		fig = plt.gcf()
-		figure_width = 1.667 * len(correct_proof_fraction)
-		fig.set_size_inches(figure_width, figure_height, forward=True)
-		plt.bar(x1, correct_proofs_wrong_branch, width=bar_width, color=lighten_color(colors[1], 1.3 if subbars else 0.8))
+		fig.set_size_inches(10.0, figure_height, forward=True)
+		plt.bar(x1, correct_proofs_wrong_branch, width=bar_width, color=lighten_color(colors[1], 1.3))
 		plt.bar(x1, correct_proof_fraction - correct_proofs_wrong_branch, width=bar_width, bottom=correct_proofs_wrong_branch, color=lighten_color(colors[1], 0.8))
-		plt.bar(x1, incorrect_proofs_wrong_branch, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3 if subbars else 0.8))
+		plt.bar(x1, incorrect_proofs_wrong_branch, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3))
 		plt.bar(x1, 1.0 - correct_proof_fraction - incorrect_proofs_wrong_branch, width=bar_width, bottom=correct_proof_fraction+incorrect_proofs_wrong_branch, color=lighten_color(colors[0], 0.8))
 
-		plt.bar(x2, correct_proofs_useful_non_atomic_step, width=bar_width, color=lighten_color(colors[1], 1.3 if subbars else 0.8))
+		plt.bar(x2, correct_proofs_useful_non_atomic_step, width=bar_width, color=lighten_color(colors[1], 1.3))
 		plt.bar(x2, correct_proof_fraction - correct_proofs_useful_non_atomic_step, width=bar_width, bottom=correct_proofs_useful_non_atomic_step, color=lighten_color(colors[1], 0.8))
-		plt.bar(x2, incorrect_proofs_useful_non_atomic_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3 if subbars else 0.8))
+		plt.bar(x2, incorrect_proofs_useful_non_atomic_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3))
 		plt.bar(x2, 1.0 - correct_proof_fraction - incorrect_proofs_useful_non_atomic_step, width=bar_width, bottom=correct_proof_fraction+incorrect_proofs_useful_non_atomic_step, color=lighten_color(colors[0], 0.8))
 
-		plt.bar(x3, correct_proofs_wrong_non_atomic_step, width=bar_width, color=lighten_color(colors[1], 1.3 if subbars else 0.8))
+		plt.bar(x3, correct_proofs_wrong_non_atomic_step, width=bar_width, color=lighten_color(colors[1], 1.3))
 		plt.bar(x3, correct_proof_fraction - correct_proofs_wrong_non_atomic_step, width=bar_width, bottom=correct_proofs_wrong_non_atomic_step, color=lighten_color(colors[1], 0.8))
-		plt.bar(x3, incorrect_proofs_wrong_non_atomic_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3 if subbars else 0.8))
+		plt.bar(x3, incorrect_proofs_wrong_non_atomic_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3))
 		plt.bar(x3, 1.0 - correct_proof_fraction - incorrect_proofs_wrong_non_atomic_step, width=bar_width, bottom=correct_proof_fraction+incorrect_proofs_wrong_non_atomic_step, color=lighten_color(colors[0], 0.8))
 
-		plt.bar(x4, correct_proofs_useful_skip_step, width=bar_width, color=lighten_color(colors[1], 1.3 if subbars else 0.8))
+		plt.bar(x4, correct_proofs_useful_skip_step, width=bar_width, color=lighten_color(colors[1], 1.3))
 		plt.bar(x4, correct_proof_fraction - correct_proofs_useful_skip_step, width=bar_width, bottom=correct_proofs_useful_skip_step, color=lighten_color(colors[1], 0.8))
-		plt.bar(x4, incorrect_proofs_useful_skip_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3 if subbars else 0.8))
+		plt.bar(x4, incorrect_proofs_useful_skip_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3))
 		plt.bar(x4, 1.0 - correct_proof_fraction - incorrect_proofs_useful_skip_step, width=bar_width, bottom=correct_proof_fraction+incorrect_proofs_useful_skip_step, color=lighten_color(colors[0], 0.8))
 
-		plt.bar(x5, correct_proofs_wrong_skip_step, width=bar_width, color=lighten_color(colors[1], 1.3 if subbars else 0.8))
+		plt.bar(x5, correct_proofs_wrong_skip_step, width=bar_width, color=lighten_color(colors[1], 1.3))
 		plt.bar(x5, correct_proof_fraction - correct_proofs_wrong_skip_step, width=bar_width, bottom=correct_proofs_wrong_skip_step, color=lighten_color(colors[1], 0.8))
-		plt.bar(x5, incorrect_proofs_wrong_skip_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3 if subbars else 0.8))
+		plt.bar(x5, incorrect_proofs_wrong_skip_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3))
 		plt.bar(x5, 1.0 - correct_proof_fraction - incorrect_proofs_wrong_skip_step, width=bar_width, bottom=correct_proof_fraction+incorrect_proofs_wrong_skip_step, color=lighten_color(colors[0], 0.8))
 
-		plt.bar(x6, correct_proofs_invalid_step, width=bar_width, color=lighten_color(colors[1], 1.3 if subbars else 0.8))
+		plt.bar(x6, correct_proofs_invalid_step, width=bar_width, color=lighten_color(colors[1], 1.3))
 		plt.bar(x6, correct_proof_fraction - correct_proofs_invalid_step, width=bar_width, bottom=correct_proofs_invalid_step, color=lighten_color(colors[1], 0.8))
-		plt.bar(x6, incorrect_proofs_invalid_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3 if subbars else 0.8))
+		plt.bar(x6, incorrect_proofs_invalid_step, width=bar_width, bottom=correct_proof_fraction, color=lighten_color(colors[0], 1.3))
 		plt.bar(x6, 1.0 - correct_proof_fraction - incorrect_proofs_invalid_step, width=bar_width, bottom=correct_proof_fraction+incorrect_proofs_invalid_step, color=lighten_color(colors[0], 0.8))
 
 		# draw the error bars
@@ -612,7 +603,7 @@ else:
 			plt.text(0.0 + 3*bar_width - delta, 1.0, "correct ``skip steps''", rotation=70, color=(0.3,0.3,0.3), fontsize=8.0, horizontalalignment='left', verticalalignment='bottom')
 			plt.text(0.0 + 4*bar_width - delta, 1.0, "misleading ``skip steps''", rotation=70, color=(0.3,0.3,0.3), fontsize=8.0, horizontalalignment='left', verticalalignment='bottom')
 			plt.text(0.0 + 5*bar_width - delta, 1.0, "invalid steps", rotation=70, color=(0.3,0.3,0.3), fontsize=8.0, horizontalalignment='left', verticalalignment='bottom')
-		fig.savefig(chart_filename, dpi=(128 if '.pdf' in chart_filename else 512), bbox_inches=Bbox([[0.3 if '.pdf' in chart_filename else 0.0, -0.1], [figure_width - 0.3, figure_height]]))
+		fig.savefig(chart_filename, dpi=128, bbox_inches=Bbox([[0.3, -0.1], [10.0 - 0.3, figure_height]]))
 		plt.clf()
 
 		if wrong_branch_lengths_filename != None:
@@ -727,17 +718,20 @@ else:
 				fig.savefig(first_error_chart_filename, dpi=128, bbox_inches=Bbox([[0.0, (xlabel_line_count + 1) * -0.1], [10.0 - 0.3, first_error_figure_height]]))
 			plt.clf()
 
+	hops = [1, 3, 5]
+	df_paths = [f'baseline_1shot_{k}hop.pkl' for k in hops] \
+			+ [f'forward_1shot_{k}hop.pkl' for k in hops] \
+			+ [f'backward_1shot_{k}hop.pkl' for k in hops] \
+			+ [f'baseline_consistency_{k}hop.pkl' for k in hops] \
+			+ [f'direction_consistency_{k}hop.pkl' for k in hops] \
+			+ [f'forward_negation_consistency_{k}hop.pkl' for k in hops] \
+			+ [f'backward_negation_consistency_{k}hop.pkl' for k in hops] \
+			+ [f'forward_randomized_order_consistency_{k}hop.pkl' for k in hops] \
+			+ [f'backward_randomized_order_consistency_{k}hop.pkl' for k in hops]
+	
+	df_paths = [os.path.join(OUTPUT_ROOT, df_path) for df_path in df_paths]
 
-	logfiles = ['gpt_textdavinci002_1hop.log', 'gpt_textdavinci002_1hop_preorder.log', 'gpt_textdavinci002_3hop.log', 'gpt_textdavinci002_3hop_preorder.log', 'gpt_textdavinci002_5hop.log', 'gpt_textdavinci002_5hop_preorder.log'] \
-			 + ['gpt_textdavinci002_1hop_falseontology.log', 'gpt_textdavinci002_1hop_preorder_falseontology.log', 'gpt_textdavinci002_3hop_falseontology.log', 'gpt_textdavinci002_3hop_preorder_falseontology.log', 'gpt_textdavinci002_5hop_falseontology.log', 'gpt_textdavinci002_5hop_preorder_falseontology.log'] \
-			 + ['gpt_textdavinci002_1hop_trueontology.log', 'gpt_textdavinci002_1hop_preorder_trueontology.log', 'gpt_textdavinci002_3hop_trueontology.log', 'gpt_textdavinci002_3hop_preorder_trueontology.log', 'gpt_textdavinci002_5hop_trueontology.log', 'gpt_textdavinci002_5hop_preorder_trueontology.log'] \
-			 + ['gpt_textada001_3hop_preorder.log', 'gpt_textbabbage001_3hop_preorder.log', 'gpt_textcurie001_3hop_preorder.log', 'gpt_davinci_3hop_preorder.log', 'gpt_textdavinci001_3hop_preorder.log', 'gpt_textdavinci002_3hop_preorder.log'] \
-			 + ['gpt_textada001_3hop_preorder_falseontology.log', 'gpt_textbabbage001_3hop_preorder_falseontology.log', 'gpt_textcurie001_3hop_preorder_falseontology.log', 'gpt_davinci_3hop_preorder_falseontology.log', 'gpt_textdavinci001_3hop_preorder_falseontology.log', 'gpt_textdavinci002_3hop_preorder_falseontology.log'] \
-			 + ['gpt_textada001_3hop_preorder_trueontology.log', 'gpt_textbabbage001_3hop_preorder_trueontology.log', 'gpt_textcurie001_3hop_preorder_trueontology.log', 'gpt_davinci_3hop_preorder_trueontology.log', 'gpt_textdavinci001_3hop_preorder_trueontology.log', 'gpt_textdavinci002_3hop_preorder_trueontology.log'] \
-			 + ['gpt_textada001_1hop_preorder.log', 'gpt_textbabbage001_1hop_preorder.log', 'gpt_textcurie001_1hop_preorder.log', 'gpt_davinci_1hop_preorder.log', 'gpt_textdavinci001_1hop_preorder.log', 'gpt_textdavinci002_1hop_preorder.log'] \
-			 + ['gpt_textada001_1hop_preorder_falseontology.log', 'gpt_textbabbage001_1hop_preorder_falseontology.log', 'gpt_textcurie001_1hop_preorder_falseontology.log', 'gpt_davinci_1hop_preorder_falseontology.log', 'gpt_textdavinci001_1hop_preorder_falseontology.log', 'gpt_textdavinci002_1hop_preorder_falseontology.log'] \
-			 + ['gpt_textada001_1hop_preorder_trueontology.log', 'gpt_textbabbage001_1hop_preorder_trueontology.log', 'gpt_textcurie001_1hop_preorder_trueontology.log', 'gpt_davinci_1hop_preorder_trueontology.log', 'gpt_textdavinci001_1hop_preorder_trueontology.log', 'gpt_textdavinci002_1hop_trueontology.log']
-	logfiles = set(logfiles)
+	df_paths = set(df_paths)
 	example_count = []
 	label_accuracy = []
 	proof_accuracy = []
@@ -771,11 +765,11 @@ else:
 
 	point_colors = []
 	color_code = "model_size"
-	for logfile in logfiles:
-		if "seed" in logfile:
+	for df_path in df_paths:
+		if "seed" in df_path:
 			continue
-		print('parsing "{}"'.format(logfile))
-		(num_examples, proof_lengths, correct_labels, expected_label_true, correct_step_count, non_atomic_step_count, skip_step_count, invalid_step_count, all_correct_and_useful_steps, all_redundant_steps, all_unparseable_steps, all_incorrect_steps, contains_correct_proof, does_not_contain_correct_proof, contains_wrong_branch, contains_useful_skip_step, contains_wrong_skip_step, contains_useful_non_atomic_step, contains_wrong_non_atomic_step, contains_invalid_step, contains_wrong_branch_or_useful_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_step, contains_wrong_branch_or_invalid_step, contains_wrong_branch_or_useful_non_atomic_or_invalid_step, contains_wrong_branch_or_skip_step_or_non_atomic_step_or_invalid_step, contains_wrong_branch_or_useful_skip_step, contains_wrong_branch_or_wrong_skip_step, contains_useful_skip_or_wrong_skip_step, contains_useful_skip_or_useful_non_atomic_step, contains_useful_skip_or_wrong_non_atomic_step, contains_useful_skip_or_invalid_step, contains_wrong_skip_or_useful_non_atomic_step, contains_wrong_skip_or_wrong_non_atomic_step, contains_wrong_skip_or_invalid_step, contains_useful_non_atomic_or_wrong_non_atomic_step, contains_useful_non_atomic_or_invalid_step, contains_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_or_invalid_step, contains_correct_proof_with_skip_step, contains_correct_proof_with_non_atomic_step, contains_correct_proof_with_skip_step_or_non_atomic_step, wrong_branch_first, useful_skip_step_first, wrong_skip_step_first, useful_non_atomic_step_first, wrong_non_atomic_step_first, invalid_step_first, contains_any_wrong_branch, contains_any_useful_skip_step, contains_any_wrong_skip_step, contains_any_useful_non_atomic_step, contains_any_wrong_non_atomic_step, contains_any_invalid_step, wrong_branch_lengths, labels, correct_proofs, correct_proofs_with_skip_steps, correct_proofs_with_non_atomic_steps, correct_proofs_with_skip_or_non_atomic_steps) = analyze_log(logfile)
+		print('parsing "{}"'.format(df_path))
+		(num_examples, proof_lengths, correct_labels, expected_label_true, correct_step_count, non_atomic_step_count, skip_step_count, invalid_step_count, all_correct_and_useful_steps, all_redundant_steps, all_unparseable_steps, all_incorrect_steps, contains_correct_proof, does_not_contain_correct_proof, contains_wrong_branch, contains_useful_skip_step, contains_wrong_skip_step, contains_useful_non_atomic_step, contains_wrong_non_atomic_step, contains_invalid_step, contains_wrong_branch_or_useful_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_step, contains_wrong_branch_or_invalid_step, contains_wrong_branch_or_useful_non_atomic_or_invalid_step, contains_wrong_branch_or_skip_step_or_non_atomic_step_or_invalid_step, contains_wrong_branch_or_useful_skip_step, contains_wrong_branch_or_wrong_skip_step, contains_useful_skip_or_wrong_skip_step, contains_useful_skip_or_useful_non_atomic_step, contains_useful_skip_or_wrong_non_atomic_step, contains_useful_skip_or_invalid_step, contains_wrong_skip_or_useful_non_atomic_step, contains_wrong_skip_or_wrong_non_atomic_step, contains_wrong_skip_or_invalid_step, contains_useful_non_atomic_or_wrong_non_atomic_step, contains_useful_non_atomic_or_invalid_step, contains_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_step, contains_wrong_branch_or_wrong_non_atomic_or_invalid_step, contains_wrong_branch_or_non_atomic_or_invalid_step, contains_correct_proof_with_skip_step, contains_correct_proof_with_non_atomic_step, contains_correct_proof_with_skip_step_or_non_atomic_step, wrong_branch_first, useful_skip_step_first, wrong_skip_step_first, useful_non_atomic_step_first, wrong_non_atomic_step_first, invalid_step_first, contains_any_wrong_branch, contains_any_useful_skip_step, contains_any_wrong_skip_step, contains_any_useful_non_atomic_step, contains_any_wrong_non_atomic_step, contains_any_invalid_step, wrong_branch_lengths, labels, correct_proofs, correct_proofs_with_skip_steps, correct_proofs_with_non_atomic_steps, correct_proofs_with_skip_or_non_atomic_steps, fully_correct_proofs, total_perplexity) = analyze_output_df(df_path)
 		print(np.sum(contains_wrong_branch_or_useful_skip_step + contains_wrong_branch_or_wrong_skip_step + contains_useful_skip_or_wrong_skip_step + contains_useful_skip_or_useful_non_atomic_step + contains_useful_skip_or_wrong_non_atomic_step + contains_useful_skip_or_invalid_step + contains_wrong_skip_or_useful_non_atomic_step + contains_wrong_skip_or_wrong_non_atomic_step + contains_wrong_skip_or_invalid_step + contains_useful_non_atomic_or_wrong_non_atomic_step + contains_useful_non_atomic_or_invalid_step + contains_wrong_non_atomic_or_invalid_step + contains_wrong_branch_or_non_atomic_step + contains_wrong_branch_or_wrong_non_atomic_or_invalid_step + contains_wrong_branch_or_non_atomic_or_invalid_step))
 
 		correct_proof_count = np.sum(contains_correct_proof)
@@ -809,30 +803,38 @@ else:
 		confusion_matrix_with_skip_and_non_atomic_steps[1, 1] += np.sum(np.logical_and(labels == 1, correct_proofs_with_skip_or_non_atomic_steps == 1))
 
 		if color_code == "hop_count":
-			if "1hop" in logfile:
+			if "1hop" in df_path:
 				point_colors.append(colors[0])
-			elif "3hop" in logfile:
+			elif "3hop" in df_path:
 				point_colors.append(colors[1])
-			elif "5hop" in logfile:
+			elif "5hop" in df_path:
 				point_colors.append(colors[2])
 			else:
 				raise Exception("Unable to determine hop count.")
-		elif color_code == "model_size":
-			if "_textada001_" in logfile:
+		elif color_code == "prompt_type":
+			if "baseline" in df_path and "consistency" not in df_path:
 				point_colors.append(colors[0])
-			elif "_textbabbage001_" in logfile:
+			elif "forward" in df_path and "consistency" not in df_path:
 				point_colors.append(colors[1])
-			elif "_textcurie001_" in logfile:
+			elif "backward" in df_path and "consistency" not in df_path:
 				point_colors.append(colors[2])
-			elif "_davinci_" in logfile:
+			else:
+				raise Exception("Unable to determine prompt type.")
+		elif color_code == "consistency_type":
+			if "baseline_consistency" in df_path:
+				point_colors.append(colors[0])
+			elif "direction_consistency" in df_path:
+				point_colors.append(colors[1])
+			elif "forward_negation_consistency" in df_path:
+				point_colors.append(colors[2])
+			elif "backward_negation_consistency" in df_path:
 				point_colors.append(colors[3])
-			elif "_textdavinci001_" in logfile:
+			elif "forward_randomized_order_consistency" in df_path:
 				point_colors.append(colors[4])
-			elif "_textdavinci002_" in logfile:
+			elif "backward_randomized_order_consistency" in df_path:
 				point_colors.append(colors[5])
 			else:
-				raise Exception("Unable to determine model size.")
-
+				raise Exception("Unable to determine consistency type.")
 
 	example_count = np.array(example_count)
 	label_accuracy = np.array(label_accuracy)
@@ -918,62 +920,18 @@ else:
 	fig.savefig('label_vs_proof_accuracy_with_skip_steps_and_non_atomic_steps.pdf', dpi=128, bbox_inches='tight')
 	plt.clf()
 
+	# TODO: edit arguments!
 	make_step_type_plot('Fictional ontology',
 		['gpt_textdavinci002_1hop.log', 'gpt_textdavinci002_1hop_preorder.log', 'gpt_textdavinci002_3hop.log', 'gpt_textdavinci002_3hop_preorder.log', 'gpt_textdavinci002_5hop.log', 'gpt_textdavinci002_5hop_preorder.log'],
 		['1 hop, bottom-up \n traversal direction', '1 hop, top-down \n traversal direction', '3 hops, bottom-up \n traversal direction', '3 hops, top-down \n traversal direction', '5 hops, bottom-up \n traversal direction', '5 hops, top-down \n traversal direction'],
 		'textdavinci002_fictional_ontology_proof_accuracy.pdf', 'textdavinci002_fictional_ontology_first_error.pdf', 'textdavinci002_fictional_ontology_wrong_branch_lengths.pdf', first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6)
-
-	make_step_type_plot('False ontology',
-		['gpt_textdavinci002_1hop_falseontology.log', 'gpt_textdavinci002_1hop_preorder_falseontology.log', 'gpt_textdavinci002_3hop_falseontology.log', 'gpt_textdavinci002_3hop_preorder_falseontology.log', 'gpt_textdavinci002_5hop_falseontology.log', 'gpt_textdavinci002_5hop_preorder_falseontology.log'],
-		['1 hop, bottom-up \n traversal direction', '1 hop, top-down \n traversal direction', '3 hops, bottom-up \n traversal direction', '3 hops, top-down \n traversal direction', '5 hops, bottom-up \n traversal direction', '5 hops, top-down \n traversal direction'],
-		'textdavinci002_false_ontology_proof_accuracy.pdf', 'textdavinci002_false_ontology_first_error.pdf', 'textdavinci002_false_ontology_wrong_branch_lengths.pdf', first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False)
-
-	make_step_type_plot('True ontology',
-		['gpt_textdavinci002_1hop_trueontology.log', 'gpt_textdavinci002_1hop_preorder_trueontology.log', 'gpt_textdavinci002_3hop_trueontology.log', 'gpt_textdavinci002_3hop_preorder_trueontology.log', 'gpt_textdavinci002_5hop_trueontology.log', 'gpt_textdavinci002_5hop_preorder_trueontology.log'],
-		['1 hop, bottom-up \n traversal direction', '1 hop, top-down \n traversal direction', '3 hops, bottom-up \n traversal direction', '3 hops, top-down \n traversal direction', '5 hops, bottom-up \n traversal direction', '5 hops, top-down \n traversal direction'],
-		'textdavinci002_true_ontology_proof_accuracy.pdf', 'textdavinci002_true_ontology_first_error.pdf', 'textdavinci002_true_ontology_wrong_branch_lengths.pdf', first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False)
 
 	make_step_type_plot('Fictional ontology, 3 hops',
 		['gpt_textada001_3hop_preorder.log', 'gpt_textbabbage001_3hop_preorder.log', 'gpt_textcurie001_3hop_preorder.log', 'gpt_davinci_3hop_preorder.log', 'gpt_textdavinci001_3hop_preorder.log', 'gpt_textdavinci002_3hop_preorder.log'],
 		['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
 		'fictional_ontology_3hop_model_size.pdf', 'fictional_ontology_3hop_model_size_first_error.pdf', 'fictional_ontology_3hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_first_error_ylabel=True, first_error_title='Fictional ontology, 3 hops, top-down traversal direction')
 
-	make_step_type_plot('False ontology, 3 hops',
-		['gpt_textada001_3hop_preorder_falseontology.log', 'gpt_textbabbage001_3hop_preorder_falseontology.log', 'gpt_textcurie001_3hop_preorder_falseontology.log', 'gpt_davinci_3hop_preorder_falseontology.log', 'gpt_textdavinci001_3hop_preorder_falseontology.log', 'gpt_textdavinci002_3hop_preorder_falseontology.log'],
-		['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
-		'false_ontology_3hop_model_size.pdf', 'false_ontology_3hop_model_size_first_error.pdf', 'false_ontology_3hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False, first_error_title='False ontology, 3 hops, top-down traversal direction')
-
-	make_step_type_plot('True ontology, 3 hops',
-		['gpt_textada001_3hop_preorder_trueontology.log', 'gpt_textbabbage001_3hop_preorder_trueontology.log', 'gpt_textcurie001_3hop_preorder_trueontology.log', 'gpt_davinci_3hop_preorder_trueontology.log', 'gpt_textdavinci001_3hop_preorder_trueontology.log', 'gpt_textdavinci002_3hop_preorder_trueontology.log'],
-		['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
-		'true_ontology_3hop_model_size.pdf', 'true_ontology_3hop_model_size_first_error.pdf', 'true_ontology_3hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False, first_error_title='True ontology, 3 hops, top-down traversal direction')
-
 	make_step_type_plot('Fictional ontology, 1 hop',
 		['gpt_textada001_1hop_preorder.log', 'gpt_textbabbage001_1hop_preorder.log', 'gpt_textcurie001_1hop_preorder.log', 'gpt_davinci_1hop_preorder.log', 'gpt_textdavinci001_1hop_preorder.log', 'gpt_textdavinci002_1hop_preorder.log'],
 		['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
 		'fictional_ontology_1hop_model_size.pdf', 'fictional_ontology_1hop_model_size_first_error.pdf', 'fictional_ontology_1hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False, first_error_title='Fictional ontology, 1 hop, top-down traversal direction')
-
-	make_step_type_plot('False ontology, 1 hop',
-		['gpt_textada001_1hop_preorder_falseontology.log', 'gpt_textbabbage001_1hop_preorder_falseontology.log', 'gpt_textcurie001_1hop_preorder_falseontology.log', 'gpt_davinci_1hop_preorder_falseontology.log', 'gpt_textdavinci001_1hop_preorder_falseontology.log', 'gpt_textdavinci002_1hop_preorder_falseontology.log'],
-		['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
-		'false_ontology_1hop_model_size.pdf', 'false_ontology_1hop_model_size_first_error.pdf', 'false_ontology_1hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False, first_error_title='False ontology, 1 hop, top-down traversal direction')
-
-	make_step_type_plot('True ontology, 1 hop',
-		['gpt_textada001_1hop_preorder_trueontology.log', 'gpt_textbabbage001_1hop_preorder_trueontology.log', 'gpt_textcurie001_1hop_preorder_trueontology.log', 'gpt_davinci_1hop_preorder_trueontology.log', 'gpt_textdavinci001_1hop_preorder_trueontology.log', 'gpt_textdavinci002_1hop_trueontology.log'],
-		['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
-		'true_ontology_1hop_model_size.pdf', 'true_ontology_1hop_model_size_first_error.pdf', 'true_ontology_1hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False, first_error_title='True ontology, 1 hop, top-down traversal direction')
-
-	make_step_type_plot('',
-		['gpt_textdavinci002_5hop_preorder_trueontology.log', 'gpt_textdavinci002_5hop_preorder.log', 'gpt_textdavinci002_5hop_preorder_falseontology.log'],
-		['true ontology', 'fictional ontology', 'false ontology'],
-		'iclr2023_ontology_type.png', 'iclr2023_ontology_type_first_error.png', 'iclr2023_ontology_type_wrong_branch_lengths.png', first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, subbars=False)
-
-	make_step_type_plot('',
-		['gpt_textdavinci002_1hop_preorder.log', 'gpt_textdavinci002_3hop_preorder.log', 'gpt_textdavinci002_5hop_preorder.log'],
-		['1 hop', '3 hops', '5 hops'],
-		'iclr2023_proof_length.png', 'iclr2023_proof_length_first_error.png', 'iclr2023_proof_length_wrong_branch_lengths.png', first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, subbars=False)
-
-	make_step_type_plot('',
-		['gpt_textdavinci002_1hop_preorder.log', 'gpt_textdavinci002_3hop_preorder.log', 'gpt_textdavinci002_5hop_preorder.log'],
-		['1 hop', '3 hops', '5 hops'],
-		'iclr2023_proof_length_subbars.png', 'iclr2023_proof_length_first_error.png', 'iclr2023_proof_length_wrong_branch_lengths.png', first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, subbars=True)
