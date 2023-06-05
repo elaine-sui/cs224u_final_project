@@ -71,7 +71,7 @@ def convert_all_dfs(folder_name):
         convert_df_to_regular_format(output_df, out_file, backward=backward, negated=negated)
 
 if __name__ == '__main__':
-    convert_all_dfs("/sailhome/esui/cs224u_final_project/prontoqa_output/fictional")
+    convert_all_dfs("prontoqa_output/fictional")
 
 
     

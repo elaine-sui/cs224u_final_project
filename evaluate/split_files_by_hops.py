@@ -1,5 +1,6 @@
 import pickle
 import os
+from glob import glob
 
 hops = [1, 3, 5]
 
@@ -28,17 +29,23 @@ def separate_output_files_by_hops(output_df_path):
         print(f"Dumped num_hop={hop} to {filename}")
 
 if __name__ == '__main__':
+    # Forward single 
     paths = [
         'backward_1_shot_temp_0.0_seed_1234.pkl',
         'forward_1_shot_temp_0.0_seed_1234.pkl',
         'baseline_1_shot_temp_0.7_seed_1234.pkl',
     ]
 
-    paths = [os.path.join("prontoqa_output/fictional", p) for p in paths]
+    paths = [os.path.join("prontoqa_output/fictional/converted", p) for p in paths]
     
+    # all the paths in the "aggregated" folder
+    paths2 = glob("prontoqa_output/fictional/aggregated/*.pkl")
+    paths.extend(paths2)
+
     for path in paths:
         print(f"Splitting file {path}")
         separate_output_files_by_hops(path)
+    
 
 
 
