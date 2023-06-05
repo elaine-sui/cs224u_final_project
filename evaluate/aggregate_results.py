@@ -1,190 +1,104 @@
-import pickle
-import random
-import pandas as pd
-from statistics import multimode
+import os
+import argparse
 
-from ..utils import negate_query, reverse_sentences, flip_conclusion_in_cot
+from aggregate_results_utils import merge_dfs
 
-"""
-Baseline (1234, 5678, 910)
-Forward + backward
-Forward negated + unnegated
-Backward negated + unnegated
-Forward randomized (1234, 5678, 910)
-Backward randomized (1234, 5678, 910)
+ROOT = '/sailhome/esui/cs224u_final_project/prontoqa_output/fictional'
 
-How to aggregate CoT? (write each one as a separate function -- helpful for evaluation/analysis)
- - Intersection of all CoTs (converted so that they are comparable)
- - Union of all CoTs (converted so that they are comparable)
- - Choose the longest one
+OUT_FOLDER = os.path.join(ROOT, 'aggregated')
+os.makedirs(OUT_FOLDER, exist_ok=True)
 
-How to aggregate answer? (write each one as a separate function -- helpful for evaluation/analysis)
- - Take majority answer
- - [Only applies if aggregating 2 results] 
-    - If disagreement, 2 choices:
-        - 1) Hard -- Must choose answer: choose answer corresponding with the longest CoT
-        - 2) Soft -- Can output "I don't know"
-"""
+FILES = {
+        'forward_0': 'forward_1_shot_temp_0.0_seed_1234.pkl',
+        'forward_1': 'forward_randomized_order_1_shot_temp_0.0_seed_1234.pkl',
+        'forward_2': 'forward_randomized_order_1_shot_temp_0.0_seed_12345.pkl',
+        'backward_0': 'backward_1_shot_temp_0.0_seed_1234.pkl',
+        'backward_1': 'backward_randomized_order_1_shot_temp_0.0_seed_1234.pkl',
+        'backward_2': 'backward_randomized_order_1_shot_temp_0.0_seed_12345.pkl',
+        'forward_neg': 'forward_negated_1_shot_temp_0.0_seed_1234.pkl',
+        'backward_neg': 'backward_negated_1_shot_temp_0.0_seed_1234.pkl',
+        'baseline_seed1234': 'baseline_1_shot_temp_0.7_seed_1234.pkl',
+        'baseline_seed5678': 'baseline_1_shot_temp_0.7_seed_5678.pkl',
+        'baseline_seed910': 'baseline_1_shot_temp_0.7_seed_910.pkl',
+    }
 
-def convert_df_to_regular_format(output_df, backward=False, negated=False):
+AGGREGATION_TYPES = [
+    "direction", 
+    "forward_negation", 
+    "backward_negation", 
+    "forward_randomized_order", 
+    "backward_randomized_order", 
+    "forward_all", 
+    "backward_all",
+    "all"
+]
 
-    new_df = []
+MERGE_ANSWER_TYPES = ['hard', 'soft']
+MERGE_COT_TYPES = ['intersection', 'union', 'longest']
 
-    for _, row in output_df.iterrows():
-        query = row['test_example']['query'].split(":")[-1].strip()
-        gold_cot_conclusion = negate_query(row['test_example']['chain_of_thought'][-1])
-        conclusion_is_negated_query = gold_cot_conclusion == query
-        
-        predicted_label = row['predicted_answer']
-		
-        if negated:
-			# Flip answer if negated regular query in prompt
-            predicted_label = "False" if predicted_label == "True" else "True"
-        
-        predicted_proof = row['predicted_cot']
-        
-        if backward:
-            predicted_proof = reverse_sentences(predicted_proof)
-		
-		# Flip the sign of the conclusion in the predicted CoT if using negated query and 
-		# gold conclusion is not the negation of the regular (unnegated) query
-        if negated and not conclusion_is_negated_query:
-            predicted_proof = flip_conclusion_in_cot(predicted_proof)
-        
-        # Reset expected answer and cot
-        row['gold_answer'] = row['test_example']['answer']
-        row['gold_cot'] = ' '.join(row['test_example']['chain_of_thought'])
+def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type):
+    out_file = os.path.join(OUT_FOLDER, f'{aggregation_type}_consistency_{merge_answer_type}_{merge_cot_type}.pkl')
 
-        new_df.append(row.to_dict())
-
-    new_df = pd.DataFrame(new_df)
-
-    return new_df
-
-
-def find_longest_cot(cots):
-    # Split CoT into parts and get max length
-    cot_lens = [len(cot.split('. ')) for cot in cots]
-
-    max_len = max(cot_lens)
-
-    # Get indices of CoTs with max len and randomly choose one if multiple
-    indices = [i for i in len(cot_lens) if cot_lens[i] == max_len]
-    random.shuffle(indices)
-    largest_idx = indices[0]
-
-    return largest_idx
-
-
-def merge_answers(predicted_answers, predicted_cots, merge_type="hard"):
-    """
-    Choose majority answer.
-    'hard' merge type: if disagreement, choose answer corresponding with the longest CoT
-    'soft' merge type: if disagreement, write 'I don't know'
-    """
-    majority_answer = multimode(predicted_answers)
-
-    if len(majority_answer) > 1: # disagreement
-        if merge_type == 'hard':
-            # choose answer corresponding with the longest cot
-            longest_cot_idx = find_longest_cot(predicted_cots)
-            majority_answer = predicted_answers[longest_cot_idx]
-        elif merge_type == 'soft':
-            majority_answer = "I don't know"
-        else:
-            raise NotImplementedError(f'merge type {merge_type} not implemented!')
-    else:
-        majority_answer = majority_answer[0]
+    if aggregation_type == "direction":
+        df_paths = [
+            FILES['forward_0'], 
+            FILES['backward_0']
+        ]
+    elif aggregation_type == "forward_negation":
+        df_paths = [
+            FILES['forward_0'],
+            FILES['forward_neg']
+        ]
+    elif aggregation_type == "backward_negation":
+        df_paths = [
+            FILES['backward_0'],
+            FILES['backward_neg']
+        ]
+    elif aggregation_type == "forward_randomized_order":
+        df_paths = [
+            FILES['forward_0'],
+            FILES['forward_1'],
+            FILES['forward_2'],
+        ]
+    elif aggregation_type == "backward_randomized_order":
+        df_paths = [
+            FILES['backward_0'],
+            FILES['backward_1'],
+            FILES['backward_2'],
+        ]
+    elif aggregation_type == "forward_all":
+        df_paths = [
+            FILES['forward_0'],
+            FILES['forward_1'],
+            FILES['forward_2'],
+            FILES['forward_neg'],
+        ]
+    elif aggregation_type == "backward_all":
+        df_paths = [
+            FILES['backward_0'],
+            FILES['backward_1'],
+            FILES['backward_2'],
+            FILES['backward_neg'],
+        ]
+    elif aggregation_type == "all":
+        df_paths = list(FILES.values())
     
-    return majority_answer
+    df_paths = [os.path.join(ROOT, 'converted', path) for path in df_paths]
+
+    return df_paths, out_file
+
+def aggregate(aggregation_type, merge_answer_type, merge_cot_type):
+    df_paths, out_file = get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type)
+
+    merge_dfs(df_paths, merge_answer_type, merge_cot_type, out_file)
 
 
-def cot_set_operation(cots, operation="intersection"):
-    # Remove the last period of the cot if exists
-    cots_ = []
-    for cot in cots:
-        if cot[-1] == 0:
-            cots_.append(cot[:-1])
-        else:
-            cots_.append(cot)
-    
-    # Separate into steps
-    cot_steps = [set(cot.split('. ')) for cot in cots_]
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--aggregation_type", type=str, choices=AGGREGATION_TYPES)
+    parser.add_argument("--merge_answer_type", type=str, choices=MERGE_ANSWER_TYPES)
+    parser.add_argument("--merge_cot_type", type=str, choices=MERGE_COT_TYPES)
 
-    if operation == "intersection":
-        res = set.intersection(*cot_steps)
-    elif operation == "union":
-        res = set.union(*cot_steps)
-    else:
-        raise NotImplementedError(f'operation {operation} not defined')
+    args = parser.parse_args()
 
-    # FOL eval should be order invariant...
-    merged_cot = list(res)
-    
-    # Add period at end
-    merged_cot = '. '.join(merged_cot) + "."
-
-    return merged_cot
-
-
-def merge_cots(predicted_cots, merge_type="intersection"):
-    """
-    Merge chains-of-thought.
-    Merge types:
-        1) Intersection
-        2) Union
-        3) Choose longest CoT
-    """
-    merged_cot = None
-
-    if merge_type in ['intersection', 'union']:
-        merged_cot = cot_set_operation(predicted_cots, operation=merge_type)
-    elif merge_type == 'longest':
-        longest_cot_idx = find_longest_cot(predicted_cots)
-        merged_cot = predicted_cots[longest_cot_idx]
-    else:
-        raise NotImplementedError(f'merge type {merge_type} not implemented!')
-    
-    return merged_cot
-
-
-def merge_dfs(output_dfs, merge_answer_type, merge_cot_type, out_file):
-    # Merge df predicted answers and chains-of-thought
-
-    all_ids = output_dfs[0].id.to_list()
-
-    merged_df = []
-
-    for id in all_ids:
-        rows = [df[df['id'] == id] for df in output_dfs]
-
-        # assert expected answers and cots are the same
-        gold_answers = [row['gold_answer'] for row in rows]
-        gold_cots = [row['gold_cot'] for row in rows]
-
-        assert len(set(gold_answers)) == 1
-        assert len(set(gold_cots)) == 1
-
-        predicted_answers = [row['predicted_answer'] for row in rows]
-        predicted_cots = [row['predicted_cot'] for row in rows]
-
-        merged_answer = merge_answers(predicted_answers, predicted_cots, merge_type=merge_answer_type)
-        merged_cot = merge_cots(predicted_cots, merge_type=merge_cot_type)
-
-        # Create new row with merged answer and cot
-        row = rows[0]
-        row['predicted_answer'] = merged_answer
-        row['predicted_cot'] = merged_cot
-
-        merged_df.append(row.to_dict())
-    
-    # Save to pkl
-    with open(out_file, 'wb') as f:
-        pickle.dump(merged_df, out_file)
-
-    return merged_df
-
-
-
-
-
+    aggregate(args.aggregation_type, args.merge_answer_type, args.merge_cot_type)

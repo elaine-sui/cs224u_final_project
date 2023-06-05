@@ -23,15 +23,6 @@ BASELINE = {
         'baseline_seed910': 'baseline_1_shot_temp_0.7_seed_910.pkl',
     }
         
-
-
-
-
-
-
-
-########## Ani
-
 def answer_majority_unknown(df):
     mode = df.mode(axis = 1)
     na_idx = mode[1].isna()

@@ -1,5 +1,7 @@
 import random
 import pandas as pd
+import pickle
+
 import dsp
 
 
@@ -22,23 +24,43 @@ def reverse_sentences(text):
     # Reverse the order of sentences in this string
     if text[-1] == '.':
         text = text[:-1]
-    text = text.split('.')[::-1]
-    text = [t.strip() for t in text]
+    text = text.split('. ')[::-1]
     text = '. '.join(text).strip()
     text += "."
     return text
 
 
-def flip_conclusion_in_cot(proof):
+def flip_conclusion_in_cot(proof, negated_gold_cot_conclusion):
     if proof[-1] == ".":
         proof = proof[:-1]
 
     # Flip the final conclusion in chain-of-thought
-    proof = proof.split('.')
-    proof = [p.strip() for p in proof]
-    proof[-1] = negate_query(proof[-1])
+    proof = proof.split('. ')
+    negated_gold_cot_conclusion = negated_gold_cot_conclusion[:-1] # remove period
+
+    idx = [i for i, p in enumerate(proof) if negated_gold_cot_conclusion in p][0]
+
+    proof[idx] = negate_query(proof[idx])
+        
     proof = '. '.join(proof).strip()
     proof += "."
+    return proof
+
+
+def remove_answer_from_proof(proof):
+    if proof[-1] == '.':
+        proof = proof[:-1]
+    proof = proof.split('. ')
+
+    while "True" in proof:
+        proof.remove("True")
+    
+    while "False" in proof:
+        proof.remove("False")
+
+    proof = '. '.join(proof).strip()
+    proof += "."
+
     return proof
 
 
@@ -146,10 +168,3 @@ def print_template_example(
     )
 
     print(template(ex))
-
-
-def aggregate_outputs(output_dfs):
-    pass
-	# aggregated_df = pd.DataFrame(columns=output_dfs[0].columns)
-
-	
