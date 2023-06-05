@@ -1,6 +1,6 @@
 AGGREGATION_TYPES=("direction" "forward_negation" "backward_negation" "forward_randomized_order" "backward_randomized_order" "forward_all" "backward_all" "all")
 MERGE_ANSWER_TYPES=('hard' 'soft')
-MERGE_COT_TYPES=('intersection' 'union' 'longest')
+MERGE_COT_TYPES=('intersection' 'union' 'longest' 'majority')
 
 for agg_type in "${AGGREGATION_TYPES[@]}"; do
     for merge_answer_type in "${MERGE_ANSWER_TYPES[@]}"; do

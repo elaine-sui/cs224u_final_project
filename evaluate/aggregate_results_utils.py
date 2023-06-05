@@ -4,6 +4,10 @@ import random
 import pandas as pd
 from statistics import multimode
 
+import sys
+sys.path.append(os.getcwd())
+from utils import get_all_cot_steps
+
 """
 Baseline (1234, 5678, 910)
 
@@ -20,6 +24,7 @@ How to aggregate CoT? (write each one as a separate function -- helpful for eval
  - Intersection of all CoTs (converted so that they are comparable)
  - Union of all CoTs (converted so that they are comparable)
  - Choose the longest one
+ - Majority vote on the step level
 
 How to aggregate answer? (write each one as a separate function -- helpful for evaluation/analysis)
  - Take majority answer
@@ -30,8 +35,9 @@ How to aggregate answer? (write each one as a separate function -- helpful for e
 """
 
 def find_longest_cot(cots):
+    cot_steps = get_all_cot_steps(cots)
     # Split CoT into parts and get max length
-    cot_lens = [len(cot.split('. ')) for cot in cots]
+    cot_lens = [len(cot_set) for cot_set in cot_steps]
 
     max_len = max(cot_lens)
 
@@ -67,16 +73,8 @@ def merge_answers(predicted_answers, predicted_cots, merge_type="hard"):
 
 
 def cot_set_operation(cots, operation="intersection"):
-    # Remove the last period of the cot if exists
-    cots_ = []
-    for cot in cots:
-        if cot[-1] == 0:
-            cots_.append(cot[:-1])
-        else:
-            cots_.append(cot)
-    
     # Separate into steps
-    cot_steps = [set(cot.split('. ')) for cot in cots_]
+    cot_steps = get_all_cot_steps(cots)
 
     if operation == "intersection":
         res = set.intersection(*cot_steps)
@@ -94,6 +92,22 @@ def cot_set_operation(cots, operation="intersection"):
     return merged_cot
 
 
+def majority_cot_set(cots):
+    # Only include steps that appear in at least 50% of the cots listed
+    cot_steps = get_all_cot_steps(cots)
+    all_unique_cot_steps = set.union(*cot_steps)
+
+    majority_steps = []
+    for s in all_unique_cot_steps:
+        step_in_cot = [1 for cot_set in cot_steps if s in cot_set]
+        if sum(step_in_cot) >= len(cots) / 2:
+            majority_steps.append(s)
+
+    merged_cot = '. '.join(majority_steps) + "."
+
+    return merged_cot
+
+
 def merge_cots(predicted_cots, merge_type="intersection"):
     """
     Merge chains-of-thought.
@@ -101,6 +115,7 @@ def merge_cots(predicted_cots, merge_type="intersection"):
         1) Intersection
         2) Union
         3) Choose longest CoT
+        4) Majority (if the step appears in at least 50% of the CoTs)
     """
     merged_cot = None
 
@@ -109,6 +124,8 @@ def merge_cots(predicted_cots, merge_type="intersection"):
     elif merge_type == 'longest':
         longest_cot_idx = find_longest_cot(predicted_cots)
         merged_cot = predicted_cots[longest_cot_idx]
+    elif merge_type == 'majority':
+        merged_cot = majority_cot_set(predicted_cots)
     else:
         raise NotImplementedError(f'merge type {merge_type} not implemented!')
     
@@ -139,6 +156,15 @@ def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, out_file):
         assert len(set(gold_cots)) == 1
 
         predicted_answers = [row['predicted_answer'].item() for row in rows]
+        
+        # Remove periods from answers
+        clean_predicted_answers = []
+        for answer in predicted_answers:
+            if answer[-1] == ".":
+                answer = answer[:-1]
+            
+            clean_predicted_answers.append(answer)
+
         predicted_cots = [row['predicted_cot'].item() for row in rows]
 
         merged_answer = merge_answers(predicted_answers, predicted_cots, merge_type=merge_answer_type)

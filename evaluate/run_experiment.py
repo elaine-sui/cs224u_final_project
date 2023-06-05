@@ -650,22 +650,16 @@ def evaluate_response(response_proof, response_label, expected_proof, expected_l
 	return (label_correctness, expected_label, correct_steps, correct_and_useful_steps, redundant_steps, unparseable_steps, wrong_branch_steps, useful_skip_steps, wrong_skip_steps, useful_non_atomic_steps, wrong_non_atomic_steps, invalid_steps, incorrect_steps, found_conclusion, found_conclusion_with_skip_steps, found_conclusion_with_non_atomic_steps)
 
 
-def parse_output_df(output_df, backward=False, negated=False):
-	# Note: output_df has already been aggregated
+def parse_output_df(output_df):
+	# Note: output_df has already been aggregated and converted
 
 	results = []
 	parse_errors = []
 	proofs_only = False
 	for i, row in output_df.iterrows():
-		assert row['gold_answer'] == row['test_example']['answer']
 		expected_label = row['gold_answer'] 
-		assert row['gold_cot'] == ' '.join(row['test_example']['chain_of_thought'])
 		expected_proof = row['gold_cot'] 
 		# print(f"Expected proof: {expected_proof}")
-
-		query = row['test_example']['query'].split(":")[-1].strip()
-		gold_cot_conclusion = negate_query(row['test_example']['chain_of_thought'][-1])
-		conclusion_is_negated_query = gold_cot_conclusion == query
 
 		# print(f"Full query: {row['test_example']['query']}")
 		# print(f"Query: {query}")
@@ -676,23 +670,7 @@ def parse_output_df(output_df, backward=False, negated=False):
 		last_question = row['test_example']['question']
 
 		predicted_label = row['predicted_answer']
-		
-		if negated:
-			# Flip answer if negated regular query in prompt
-			predicted_label = "False" if predicted_label == "True" else "True"
-
 		predicted_proof = row['predicted_cot']
-
-		# print(f"Predicted proof: {predicted_proof}")
-		if backward:
-			predicted_proof = reverse_sentences(predicted_proof)
-			# print(f"Predicted proof after backward: {predicted_proof}")
-		
-		# Flip the sign of the conclusion in the predicted CoT if using negated query and 
-		# gold conclusion is not the negation of the regular (unnegated) query
-		if negated and not conclusion_is_negated_query:
-			predicted_proof = flip_conclusion_in_cot(predicted_proof)
-			# print(f"Predicted proof after negated: {predicted_proof}")
 
 		errors = []
 		# import pdb; pdb.set_trace()
@@ -703,16 +681,14 @@ def parse_output_df(output_df, backward=False, negated=False):
 		# import pdb; pdb.set_trace()
 		result = evaluate_response(predicted_proof, predicted_label, expected_proof, expected_label, parse_reasoning(last_question, parse_errors), proofs_only, parse_errors)
 		results.append(result)
-		# import pdb; pdb.set_trace()
+		import pdb; pdb.set_trace()
 
 	return results, parse_errors
 
 if __name__ == '__main__':
-	path = 'prontoqa_output/fictional/backward_negated_1_shot_temp_0.0_seed_1234.pkl'
-	backward = 'backward' in path
-	negated = 'negated' in path
+	path = 'prontoqa_output/fictional/aggregated/all_consistency_hard_intersection.pkl'
 
 	with open(path, 'rb') as f:
 		output_df = pickle.load(f)
 	
-	results, parse_errors = parse_output_df(output_df, backward=backward, negated=negated)
+	results, parse_errors = parse_output_df(output_df)

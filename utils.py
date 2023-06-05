@@ -1,6 +1,4 @@
 import random
-import pandas as pd
-import pickle
 
 import dsp
 
@@ -62,6 +60,21 @@ def remove_answer_from_proof(proof):
     proof += "."
 
     return proof
+
+
+def get_all_cot_steps(cots):
+    # Remove the last period of the cot if exists
+    cots_ = []
+    for cot in cots:
+        if cot[-1] == '.':
+            cots_.append(cot[:-1])
+        else:
+            cots_.append(cot)
+    
+    # Separate into steps
+    cot_steps = [set(cot.split('. ')) for cot in cots_]
+
+    return cot_steps
 
 
 def get_demos_backward_cot(df, id):

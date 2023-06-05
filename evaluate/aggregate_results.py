@@ -34,7 +34,7 @@ AGGREGATION_TYPES = [
 ]
 
 MERGE_ANSWER_TYPES = ['hard', 'soft']
-MERGE_COT_TYPES = ['intersection', 'union', 'longest']
+MERGE_COT_TYPES = ['intersection', 'union', 'longest', 'majority']
 
 def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type):
     out_file = os.path.join(OUT_FOLDER, f'{aggregation_type}_consistency_{merge_answer_type}_{merge_cot_type}.pkl')
