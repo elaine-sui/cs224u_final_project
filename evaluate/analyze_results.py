@@ -5,7 +5,10 @@ from sys import argv, exit
 import pickle
 import os
 
-OUTPUT_ROOT = "prontoqa_output/fictional/summary"
+OUTPUT_DF_FOLDER = "prontoqa_output/fictional/aggregated/summary"
+PLOTS_FOLDER = "plots"
+
+os.makedirs(PLOTS_FOLDER, exist_ok=True)
 
 # see https://www.mikulskibartosz.name/wilson-score-in-python-example/
 def wilson_conf_interval(p, n, z=1.96):
@@ -39,11 +42,11 @@ def get_count(result_array, index):
 def analyze_output_df(output_df_path):
 	with open(output_df_path, "rb") as f:
 		output_df = pickle.load(f)
-		backward = 'backward' in output_df_path
-		negated = 'negated' in output_df_path
+
+		print(f"Output df path: {output_df_path}")
 
 		parse_errors = []
-		results, parse_errors = parse_output_df(output_df, backward=backward, negated=negated)
+		results, parse_errors = parse_output_df(output_df)
 		if len(parse_errors) != 0:
 			print('There were errors during semantic parsing for results in file ' + output_df_path + ':')
 			for sentence, e in parse_errors:
@@ -721,18 +724,7 @@ else:
 				fig.savefig(first_error_chart_filename, dpi=128, bbox_inches=Bbox([[0.0, (xlabel_line_count + 1) * -0.1], [10.0 - 0.3, first_error_figure_height]]))
 			plt.clf()
 
-	hops = [1, 3, 5]
-	df_paths = [f'baseline_1shot_{k}hop.pkl' for k in hops] \
-			+ [f'forward_1shot_{k}hop.pkl' for k in hops] \
-			+ [f'backward_1shot_{k}hop.pkl' for k in hops] \
-			+ [f'baseline_consistency_{k}hop.pkl' for k in hops] \
-			+ [f'direction_consistency_{k}hop.pkl' for k in hops] \
-			+ [f'forward_negation_consistency_{k}hop.pkl' for k in hops] \
-			+ [f'backward_negation_consistency_{k}hop.pkl' for k in hops] \
-			+ [f'forward_randomized_order_consistency_{k}hop.pkl' for k in hops] \
-			+ [f'backward_randomized_order_consistency_{k}hop.pkl' for k in hops]
-	
-	df_paths = [os.path.join(OUTPUT_ROOT, df_path) for df_path in df_paths]
+	df_paths = glob.glob(OUTPUT_DF_FOLDER + "/*.pkl")
 
 	df_paths = set(df_paths)
 	example_count = []
@@ -834,10 +826,32 @@ else:
 				point_colors.append(colors[3])
 			elif "forward_randomized_order_consistency" in df_path:
 				point_colors.append(colors[4])
-			elif "backward_randomized_order_consistency" in df_path:
+			elif "forward_all_consistency" in df_path:
 				point_colors.append(colors[5])
+			elif "backward_all_consistency" in df_path:
+				point_colors.append(colors[6])
+			elif "all_consistency" in df_path:
+				point_colors.append(colors[7])
 			else:
 				raise Exception("Unable to determine consistency type.")
+		elif color_code == "cot_merge_type":
+			if "intersection" in df_path:
+				point_colors.append(colors[0])
+			elif "union" in df_path:
+				point_colors.append(colors[1])
+			elif "majority" in df_path:
+				point_colors.append(colors[2])
+			elif "longest" in df_path:
+				point_colors.append(colors[3])
+			else:
+				raise Exception("Unable to determine cot merge type.")
+		elif color_code == "answer_merge_type":
+			if "hard" in df_path:
+				point_colors.append(colors[0])
+			elif "soft" in df_path:
+				point_colors.append(colors[1])
+			else:
+				raise Exception("Unable to determine answer merge type.")
 
 	example_count = np.array(example_count)
 	label_accuracy = np.array(label_accuracy)
@@ -923,18 +937,18 @@ else:
 	fig.savefig('label_vs_proof_accuracy_with_skip_steps_and_non_atomic_steps.pdf', dpi=128, bbox_inches='tight')
 	plt.clf()
 
-	# TODO: edit arguments!
-	make_step_type_plot('Fictional ontology',
-		['gpt_textdavinci002_1hop.log', 'gpt_textdavinci002_1hop_preorder.log', 'gpt_textdavinci002_3hop.log', 'gpt_textdavinci002_3hop_preorder.log', 'gpt_textdavinci002_5hop.log', 'gpt_textdavinci002_5hop_preorder.log'],
-		['1 hop, bottom-up \n traversal direction', '1 hop, top-down \n traversal direction', '3 hops, bottom-up \n traversal direction', '3 hops, top-down \n traversal direction', '5 hops, bottom-up \n traversal direction', '5 hops, top-down \n traversal direction'],
-		'textdavinci002_fictional_ontology_proof_accuracy.pdf', 'textdavinci002_fictional_ontology_first_error.pdf', 'textdavinci002_fictional_ontology_wrong_branch_lengths.pdf', first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6)
+	# # TODO: edit arguments!
+	# make_step_type_plot('Fictional ontology',
+	# 	['gpt_textdavinci002_1hop.log', 'gpt_textdavinci002_1hop_preorder.log', 'gpt_textdavinci002_3hop.log', 'gpt_textdavinci002_3hop_preorder.log', 'gpt_textdavinci002_5hop.log', 'gpt_textdavinci002_5hop_preorder.log'],
+	# 	['1 hop, bottom-up \n traversal direction', '1 hop, top-down \n traversal direction', '3 hops, bottom-up \n traversal direction', '3 hops, top-down \n traversal direction', '5 hops, bottom-up \n traversal direction', '5 hops, top-down \n traversal direction'],
+	# 	'textdavinci002_fictional_ontology_proof_accuracy.pdf', 'textdavinci002_fictional_ontology_first_error.pdf', 'textdavinci002_fictional_ontology_wrong_branch_lengths.pdf', first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6)
 
-	make_step_type_plot('Fictional ontology, 3 hops',
-		['gpt_textada001_3hop_preorder.log', 'gpt_textbabbage001_3hop_preorder.log', 'gpt_textcurie001_3hop_preorder.log', 'gpt_davinci_3hop_preorder.log', 'gpt_textdavinci001_3hop_preorder.log', 'gpt_textdavinci002_3hop_preorder.log'],
-		['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
-		'fictional_ontology_3hop_model_size.pdf', 'fictional_ontology_3hop_model_size_first_error.pdf', 'fictional_ontology_3hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_first_error_ylabel=True, first_error_title='Fictional ontology, 3 hops, top-down traversal direction')
+	# make_step_type_plot('Fictional ontology, 3 hops',
+	# 	['gpt_textada001_3hop_preorder.log', 'gpt_textbabbage001_3hop_preorder.log', 'gpt_textcurie001_3hop_preorder.log', 'gpt_davinci_3hop_preorder.log', 'gpt_textdavinci001_3hop_preorder.log', 'gpt_textdavinci002_3hop_preorder.log'],
+	# 	['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
+	# 	'fictional_ontology_3hop_model_size.pdf', 'fictional_ontology_3hop_model_size_first_error.pdf', 'fictional_ontology_3hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_first_error_ylabel=True, first_error_title='Fictional ontology, 3 hops, top-down traversal direction')
 
-	make_step_type_plot('Fictional ontology, 1 hop',
-		['gpt_textada001_1hop_preorder.log', 'gpt_textbabbage001_1hop_preorder.log', 'gpt_textcurie001_1hop_preorder.log', 'gpt_davinci_1hop_preorder.log', 'gpt_textdavinci001_1hop_preorder.log', 'gpt_textdavinci002_1hop_preorder.log'],
-		['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
-		'fictional_ontology_1hop_model_size.pdf', 'fictional_ontology_1hop_model_size_first_error.pdf', 'fictional_ontology_1hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False, first_error_title='Fictional ontology, 1 hop, top-down traversal direction')
+	# make_step_type_plot('Fictional ontology, 1 hop',
+	# 	['gpt_textada001_1hop_preorder.log', 'gpt_textbabbage001_1hop_preorder.log', 'gpt_textcurie001_1hop_preorder.log', 'gpt_davinci_1hop_preorder.log', 'gpt_textdavinci001_1hop_preorder.log', 'gpt_textdavinci002_1hop_preorder.log'],
+	# 	['\\texttt{text-ada-001}', '\\texttt{text-babbage-001}', '\\texttt{text-curie-001}', '\\texttt{davinci}', '\\texttt{text-davinci-001}', '\\texttt{text-davinci-002}'],
+	# 	'fictional_ontology_1hop_model_size.pdf', 'fictional_ontology_1hop_model_size_first_error.pdf', 'fictional_ontology_1hop_model_size_wrong_branch_lengths.pdf', figure_height=1.8, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.6, show_ylabel=False, show_first_error_ylabel=False, first_error_title='Fictional ontology, 1 hop, top-down traversal direction')

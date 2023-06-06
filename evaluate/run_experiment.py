@@ -682,7 +682,6 @@ def parse_output_df(output_df):
 		result = evaluate_response(predicted_proof, predicted_label, expected_proof, expected_label, parse_reasoning(last_question, parse_errors), proofs_only, parse_errors)
 		results.append(result)
 		import pdb; pdb.set_trace()
-		print(predicted_proof)
 
 	return results, parse_errors
 

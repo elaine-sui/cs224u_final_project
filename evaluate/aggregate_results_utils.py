@@ -82,10 +82,7 @@ def merge_answers(predicted_answers, predicted_cots, merge_type="hard"):
 
 def cot_set_operation(cots, operation="intersection"):
     # Separate into steps
-    try:
-        cot_steps = get_all_cot_steps(cots)
-    except:
-        import pdb; pdb.set_trace()
+    cot_steps = get_all_cot_steps(cots)
 
     if operation == "intersection":
         res = set.intersection(*cot_steps)
@@ -194,10 +191,12 @@ def remove_intermediate_conclusion(parts, facts_and_rules_parts, query_part):
 
 
 def order_cot_from_steps(merged_cot, facts_and_rules, query):
-    cot_steps = get_all_cot_steps([merged_cot], list=True)[0]
     # Parse reasoning to get FOL logic of the cot steps
     parse_errors = []
-    fol_parse = parse_reasoning(merged_cot, parse_errors)
+    fol_parse = parse_reasoning(merged_cot, parse_errors, keep_sentences=True)
+    cot_steps = [p[1] for p in fol_parse]
+    fol_parse = [p[0] for p in fol_parse]
+
     query_fol_parse = parse_reasoning(query, parse_errors)
     facts_and_rules_fol_parse = parse_reasoning(facts_and_rules, parse_errors)
     
@@ -255,6 +254,7 @@ def order_cot_from_steps(merged_cot, facts_and_rules, query):
     for e in all_edges:
         if e in parts:
             new_order.append(parts.index(e))
+        
     ordered_cot_steps = [cot_steps[i] for i in new_order]
 
     merged_cot = '. '.join(ordered_cot_steps) + "."
@@ -338,14 +338,38 @@ def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, out_file):
             clean_cot = re.sub("However, ", "", clean_cot)
             clean_cot = re.sub("not not ", "", clean_cot)
             clean_cot = re.sub("Since ", "", clean_cot)
-            clean_cot = re.sub(" and ", ",", clean_cot)
-            clean_cot = clean_cot.split(",")
+            clean_cot = re.sub(" and ", ". ", clean_cot)
+            clean_cot = re.sub(",", ". ", clean_cot)
+            clean_cot = re.sub("False.", "", clean_cot)
+            clean_cot = re.sub("True.", "", clean_cot)
+            clean_cot = re.sub("  ", " ", clean_cot)
 
-            if isinstance(clean_cot, list):
-                for c in clean_cot:
-                    clean_predicted_cots.append(c.strip().capitalize())
-            else:
-                clean_predicted_cots.append(clean_cot.strip().capitalize())
+            # Dealing with "or" ("Alex is not a numpus or a jompus" --> Alex is not a numpus; Alex is not a jompus
+            sentences_with_or = re.findall(r"([A-Z][a-z\s]*) or ([A-Za-z\s]*).", clean_cot)
+
+            if len(sentences_with_or) > 0:
+                for sentence in sentences_with_or:
+                    intro_idx_end = sentence[0].index(' a ')
+                    intro = sentence[0][:intro_idx_end]
+                    parts = [sentence[0], intro + " " + sentence[1]]
+                    combined = '. '.join(parts) + "."
+
+                    # add combined sentence at the end
+                    clean_cot += combined
+
+                # remove all "or" sentences
+                if clean_cot[-1] == ".":
+                    clean_cot = clean_cot[:-1]
+                
+                cot_steps = clean_cot.split('. ')
+                for s in cot_steps:
+                    if ' or ' in s:
+                        cot_steps.remove(s)
+                
+                # recombine
+                clean_cot = '. '.join(cot_steps) + "."
+
+            clean_predicted_cots.append(clean_cot.strip())
         
         predicted_cots = clean_predicted_cots
 
@@ -354,7 +378,7 @@ def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, out_file):
         facts_and_rules = rows[0]['test_example'].item()['question']
 
         print(f"Query: {query}")
-        # print(f"Predicted CoTs: {predicted_cots}")
+        print(f"Predicted CoTs: {predicted_cots}")
 
         merged_answer = merge_answers(predicted_answers, predicted_cots, merge_type=merge_answer_type)
         merged_cot = merge_cots(predicted_cots, facts_and_rules, query, merge_type=merge_cot_type)
@@ -366,6 +390,8 @@ def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, out_file):
         row = rows[0].iloc[0].to_dict()
         row['predicted_answer'] = merged_answer
         row['predicted_cot'] = merged_cot
+        row['all_predicted_cots'] = predicted_cots
+        row['all_predicted_answers'] = predicted_answers
 
         merged_df.append(row)
         print("="*80 + "\n")
