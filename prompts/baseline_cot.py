@@ -10,13 +10,13 @@ def baseline_template():
         desc="${the query}")
 
     Proof = dsp.Type(
-        prefix="Proof:", 
+        prefix="Proof: Let's think step by step.", 
         desc="${a step-by-step proof that the query is true or false based only on the facts and rules}",
         format=dsp.format_answers
         )
 
     Answer = dsp.Type(
-        prefix="Answer: Let's think step by step.", 
+        prefix="Answer:", 
         desc="${the final answer based on the above proof}",
         format=dsp.format_answers
         )

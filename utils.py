@@ -62,17 +62,26 @@ def remove_answer_from_proof(proof):
     return proof
 
 
-def get_all_cot_steps(cots):
+def get_all_cot_steps(cots, list=False):
     # Remove the last period of the cot if exists
     cots_ = []
     for cot in cots:
+        if cot == "": # ignore empty strings
+            continue
         if cot[-1] == '.':
             cots_.append(cot[:-1])
         else:
             cots_.append(cot)
     
     # Separate into steps
-    cot_steps = [set(cot.split('. ')) for cot in cots_]
+    if not list:
+        cot_steps = [set(cot.split('. ')) for cot in cots_]
+    else:
+        cot_steps = [cot.split('. ') for cot in cots_]
+
+    # Remove empty strings
+    while '' in cot_steps:
+        cot_steps.remove('')
 
     return cot_steps
 
