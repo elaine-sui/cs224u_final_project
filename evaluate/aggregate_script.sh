@@ -1,4 +1,4 @@
-# AGGREGATION_TYPES=("direction" "forward_negation" "backward_negation" "forward_randomized_order" "backward_randomized_order" "forward_all" "backward_all" "all")
+# AGGREGATION_TYPES=("baseline" "direction" "forward_negation" "backward_negation" "forward_randomized_order" "backward_randomized_order" "forward_all" "backward_all" "all")
 # MERGE_ANSWER_TYPES=('hard' 'soft')
 # MERGE_COT_TYPES=('intersection' 'union' 'longest' 'majority' 'none')
 # PATH_SELECTION_TYPES=('longest' 'shortest' 'heaviest')
@@ -17,7 +17,7 @@
 #     done
 # done
 
-AGGREGATION_TYPES=("all")
+AGGREGATION_TYPES=("baseline")
 MERGE_ANSWER_TYPES=('hard')
 MERGE_COT_TYPES=('none')
 PATH_SELECTION_TYPES=('heaviest')

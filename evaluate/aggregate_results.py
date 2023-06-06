@@ -23,6 +23,7 @@ FILES = {
     }
 
 AGGREGATION_TYPES = [
+    "baseline",
     "direction", 
     "forward_negation", 
     "backward_negation", 
@@ -40,7 +41,13 @@ PATH_SELECTION_TYPES = ['longest', 'shortest', 'heaviest']
 def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type, path_selection):
     out_file = os.path.join(OUT_FOLDER, f'{aggregation_type}_consistency_merge_answer_{merge_answer_type}_merge_cot_{merge_cot_type}_path_select_{path_selection}.pkl')
 
-    if aggregation_type == "direction":
+    if aggregation_type == "baseline":
+        df_paths = [ 
+            FILES['baseline_seed1234'],
+            FILES['baseline_seed5678'],
+            FILES['baseline_seed910']
+        ]
+    elif aggregation_type == "direction":
         df_paths = [
             FILES['forward_0'], 
             FILES['backward_0']
@@ -84,7 +91,10 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_typ
     elif aggregation_type == "all":
         df_paths = list(FILES.values())
     
-    df_paths = [os.path.join(ROOT, 'converted', path) for path in df_paths]
+    if aggregation_type != "baseline":
+        df_paths = [os.path.join(ROOT, 'converted', path) for path in df_paths]
+    else:
+        df_paths = [os.path.join(ROOT, path) for path in df_paths]
 
     return df_paths, out_file
 
