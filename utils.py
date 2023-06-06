@@ -62,7 +62,7 @@ def remove_answer_from_proof(proof):
     return proof
 
 
-def get_all_cot_steps(cots, list=False):
+def get_all_cot_steps(cots, save_duplicates=False):
     # Remove the last period of the cot if exists
     cots_ = []
     for cot in cots:
@@ -74,7 +74,7 @@ def get_all_cot_steps(cots, list=False):
             cots_.append(cot)
     
     # Separate into steps
-    if not list:
+    if not save_duplicates:
         cot_steps = [set(cot.split('. ')) for cot in cots_]
     else:
         cot_steps = [cot.split('. ') for cot in cots_]

@@ -34,10 +34,11 @@ AGGREGATION_TYPES = [
 ]
 
 MERGE_ANSWER_TYPES = ['hard', 'soft']
-MERGE_COT_TYPES = ['intersection', 'union', 'longest', 'majority']
+MERGE_COT_TYPES = ['intersection', 'union', 'longest', 'majority', 'none']
+PATH_SELECTION_TYPES = ['longest', 'shortest', 'heaviest']
 
-def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type):
-    out_file = os.path.join(OUT_FOLDER, f'{aggregation_type}_consistency_{merge_answer_type}_{merge_cot_type}.pkl')
+def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type, path_selection):
+    out_file = os.path.join(OUT_FOLDER, f'{aggregation_type}_consistency_merge_answer_{merge_answer_type}_merge_cot_{merge_cot_type}_path_select_{path_selection}.pkl')
 
     if aggregation_type == "direction":
         df_paths = [
@@ -87,10 +88,10 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_typ
 
     return df_paths, out_file
 
-def aggregate(aggregation_type, merge_answer_type, merge_cot_type):
-    df_paths, out_file = get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type)
+def aggregate(aggregation_type, merge_answer_type, merge_cot_type, path_selection):
+    df_paths, out_file = get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type, path_selection)
 
-    merge_dfs(df_paths, merge_answer_type, merge_cot_type, out_file)
+    merge_dfs(df_paths, merge_answer_type, merge_cot_type, path_selection, out_file)
 
 
 if __name__ == '__main__':
@@ -98,7 +99,12 @@ if __name__ == '__main__':
     parser.add_argument("--aggregation_type", type=str, choices=AGGREGATION_TYPES)
     parser.add_argument("--merge_answer_type", type=str, choices=MERGE_ANSWER_TYPES)
     parser.add_argument("--merge_cot_type", type=str, choices=MERGE_COT_TYPES)
+    parser.add_argument("--path_selection", type=str, choices=PATH_SELECTION_TYPES)
 
     args = parser.parse_args()
 
-    aggregate(args.aggregation_type, args.merge_answer_type, args.merge_cot_type)
+    if args.path_selection == 'heaviest' and args.merge_cot_type != 'none':
+        print("Path selection type heaviest requires merge cot type to be none")
+        exit(1)
+
+    aggregate(args.aggregation_type, args.merge_answer_type, args.merge_cot_type, args.path_selection)

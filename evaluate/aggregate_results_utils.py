@@ -80,6 +80,15 @@ def merge_answers(predicted_answers, predicted_cots, merge_type="hard"):
     return majority_answer
 
 
+def concatenate_cots(cots):
+    cot_steps = get_all_cot_steps(cots, save_duplicates=True)
+    merged_cot = []
+    for cot_lst in cot_steps:
+        merged_cot.extend(cot_lst)
+
+    return merged_cot
+
+
 def cot_set_operation(cots, operation="intersection"):
     # Separate into steps
     cot_steps = get_all_cot_steps(cots)
@@ -111,7 +120,7 @@ def majority_cot_set(cots):
 
 
 def separate_fol_parse_into_parts(fol_parse):
-    # TODO: make this recursive -- operand
+    # TODO: try to make this recursive -- operand
     # Going over the FOL parse, get each part of each clause (ie, the x and y of the x ... y clauses)
     parts = []
     for fol_object in fol_parse:
@@ -164,14 +173,16 @@ def get_all_paths(G, source):
             if node == source:
                 continue
             for path in nx.all_simple_paths(G, source, node):
-                paths.append(path)
+                weight = nx.path_weight(G, path, "weight")
+                paths.append((path, weight))
     else:
         for node in G.nodes :
             for node2 in G.nodes:
                 if node2 == node:
                     continue
                 for path in nx.all_simple_paths(G, node, node2) :
-                    paths.append(path)
+                    weight = nx.path_weight(G, path, "weight")
+                    paths.append((path, weight))
     return paths
 
 
@@ -181,7 +192,7 @@ def remove_intermediate_conclusion(parts, facts_and_rules_parts, query_part):
     intermediate_conclusions = [p for p in new_parts if p[0] == query_part[0]]
     starting_statement = [p for p in facts_and_rules_parts if p[0] == query_part[0]][0]
 
-    if starting_statement in intermediate_conclusions:
+    while starting_statement in intermediate_conclusions:
         intermediate_conclusions.remove(starting_statement)
 
     for p in intermediate_conclusions:
@@ -190,10 +201,14 @@ def remove_intermediate_conclusion(parts, facts_and_rules_parts, query_part):
     return new_parts
 
 
-def order_cot_from_steps(merged_cot, facts_and_rules, query):
+def create_reasoning_graph(merged_cot, facts_and_rules, query):
     # Parse reasoning to get FOL logic of the cot steps
     parse_errors = []
     fol_parse = parse_reasoning(merged_cot, parse_errors, keep_sentences=True)
+
+    # Remove Nones from fol_parse
+    fol_parse = [f for f in fol_parse if f[0] is not None]
+
     cot_steps = [p[1] for p in fol_parse]
     fol_parse = [p[0] for p in fol_parse]
 
@@ -202,6 +217,10 @@ def order_cot_from_steps(merged_cot, facts_and_rules, query):
     
     # Going over the FOL parse, get each part of each clause (ie, the x and y of the x ... y clauses)
     parts = separate_fol_parse_into_parts(fol_parse)
+    # assert len(parts) == len(fol_parse)
+    if len(parts) != len(fol_parse):
+        import pdb; pdb.set_trace()
+        print([(cot_steps[i], parts[i]) for i in range(min(len(cot_steps), len(parts)))])
     query_part = separate_fol_parse_into_parts(query_fol_parse)[0]
 
     facts_and_rules_parts = separate_fol_parse_into_parts(facts_and_rules_fol_parse)
@@ -210,34 +229,54 @@ def order_cot_from_steps(merged_cot, facts_and_rules, query):
 
     # Create a graph using parts (edge list)
     # Remove intermediate conclusions
-    parts_cpy = remove_intermediate_conclusion(parts, facts_and_rules_parts, query_part)
+    all_edges = remove_intermediate_conclusion(parts, facts_and_rules_parts, query_part)
+    unique_edges = set(all_edges)
+    edge_weights = {edge: all_edges.count(edge) for edge in unique_edges}
+    edge_data = list(unique_edges)
+    for i, edge in enumerate(edge_data):
+        edge_data[i] = (edge[0], edge[1], edge_weights[edge])
+    weighted_edge_df = pd.DataFrame(columns=['source', 'target', 'weight'], data=edge_data)
 
-    graph = nx.from_edgelist(parts_cpy, create_using=nx.DiGraph)
+    graph = nx.from_pandas_edgelist(weighted_edge_df, create_using=nx.DiGraph, edge_attr='weight')
+
+    return graph, parts, query_part, cot_steps
+
+
+def select_path_from_reasoning_graph(graph, parts, query_part, cot_steps, path_selection="longest"):
     paths = get_all_paths(graph, source=query_part[0])
 
     # print(f"All paths: {paths}")
 
-    # Choose the path that ends with the edge query_part
-    path = [path for path in paths if (path[0] == query_part[0] and path[-1] == query_part[1])]
+    # Get all paths that start with the subject and end at the query conclusion
+    path = [path for path in paths if (path[0][0] == query_part[0] and path[0][-1] == query_part[1])]
 
-    # If that doesn't exist, choose the longest path that starts with the subject
+    # If that doesn't exist, get all paths that start with the subject
     if len(path) == 0:
-        path = [path for path in paths if path[0] == query_part[0]]
+        path = [path for path in paths if path[0][0] == query_part[0]]
     
-    # If that doesn't exist, choose the longest path
+    # If that doesn't exist, get all paths
     if len(path) == 0:
         # Subject is not part of the graph. this happens if the last statement of the facts+rules is
         # not copied ino the CoT
         path = paths
     
+    # Choose the choose the longest/shortest/highest weight path
     if len(path) > 0:
-        # choose longest path
-        path_lens = [len(p) for p in path]
-        max_idx = np.array(path_lens).argmax()
-        path = path[max_idx]
+        path_lens = [len(p[0]) for p in path]
+        if path_selection == "longest": # choose longest path
+            idx = np.array(path_lens).argmax()
+        elif path_selection == "shortest": # choose shortest path
+            idx = np.array(path_lens).argmin()
+        elif path_selection == "heaviest": # choose the highest weighted path
+            weights = [p[1] for p in path]
+            idx = np.array(weights).argmax()
+        else:
+            raise NotImplementedError(f'path selection method {path_selection} not implemented yet!')
+        path = path[idx]
     else: # no path -- happens if there is not intersection for example
         return ""
 
+    path = path[0]
     edges = [(path[i], path[i+1]) for i in range(len(path) - 1)]
 
     # Same format as gold CoT where every implication is followed by a conclusion
@@ -262,18 +301,25 @@ def order_cot_from_steps(merged_cot, facts_and_rules, query):
     return merged_cot
 
 
-def merge_cots(predicted_cots, facts_and_rules, query, merge_type="intersection"):
+def merge_cots(predicted_cots, facts_and_rules, query, merge_type="intersection", path_selection="longest"):
     """
     Merge chains-of-thought.
-    Merge types:
+    Merge types (ie preprocessing the CoT steps before reasoning graph creation):
         1) Intersection
         2) Union
         3) Choose longest CoT
         4) Majority (if the step appears in at least 50% of the CoTs)
+        5) None
+    Path selection types:
+        1) Longest
+        2) Shortest
+        3) Heaviest
     """
     merged_cot = None
 
-    if merge_type in ['intersection', 'union']:
+    if merge_type == 'none': # just concatenate all the CoTs together because want duplicates for weights for path selection
+        merged_cot = concatenate_cots(predicted_cots)
+    elif merge_type in ['intersection', 'union']:
         merged_cot = cot_set_operation(predicted_cots, operation=merge_type)
     elif merge_type == 'longest':
         longest_cot_idx = find_longest_cot(predicted_cots)
@@ -289,12 +335,16 @@ def merge_cots(predicted_cots, facts_and_rules, query, merge_type="intersection"
     print(f"After merging (before ordering): {merged_cot}")
 
     # Re-order merged CoT steps
-    merged_cot = order_cot_from_steps(merged_cot, facts_and_rules, query)
+    ## Create reasoning graph
+    graph, parts, query_part, cot_steps = create_reasoning_graph(merged_cot, facts_and_rules, query)
 
-    return merged_cot
+    ## Select appropriate path through the graph
+    merged_cot = select_path_from_reasoning_graph(graph, parts, query_part, cot_steps, path_selection=path_selection)
+
+    return merged_cot, graph
 
 
-def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, out_file):
+def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, path_selection, out_file):
     # Merge df predicted answers and chains-of-thought
 
     output_dfs = []
@@ -338,6 +388,7 @@ def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, out_file):
             clean_cot = re.sub("However, ", "", clean_cot)
             clean_cot = re.sub("not not ", "", clean_cot)
             clean_cot = re.sub("Since ", "", clean_cot)
+            clean_cot = re.sub("but ", "", clean_cot)
             clean_cot = re.sub(" and ", ". ", clean_cot)
             clean_cot = re.sub(",", ". ", clean_cot)
             clean_cot = re.sub("False.", "", clean_cot)
@@ -381,7 +432,7 @@ def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, out_file):
         print(f"Predicted CoTs: {predicted_cots}")
 
         merged_answer = merge_answers(predicted_answers, predicted_cots, merge_type=merge_answer_type)
-        merged_cot = merge_cots(predicted_cots, facts_and_rules, query, merge_type=merge_cot_type)
+        merged_cot, graph = merge_cots(predicted_cots, facts_and_rules, query, merge_type=merge_cot_type, path_selection=path_selection)
 
         print(f"Merged CoT: {merged_cot}")
         print(f"Gold CoT: {gold_cots[0]}")
@@ -392,6 +443,7 @@ def merge_dfs(output_dfs_paths, merge_answer_type, merge_cot_type, out_file):
         row['predicted_cot'] = merged_cot
         row['all_predicted_cots'] = predicted_cots
         row['all_predicted_answers'] = predicted_answers
+        row['graph'] = graph
 
         merged_df.append(row)
         print("="*80 + "\n")

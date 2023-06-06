@@ -391,15 +391,17 @@ elif len(argv) > 1:
 
 else:
 	import glob
+	import matplotlib
 	import matplotlib.pyplot as plt
 	from matplotlib import rcParams
 	from matplotlib.transforms import Bbox
 
-	plt.rcParams.update({
-		"text.usetex": True,
-		"font.family": "serif",
-		"font.serif": ["Palatino"],
-	})
+	# matplotlib.rcParams.update(matplotlib.rcParamsDefault)
+	# plt.rcParams.update({
+	# 	"text.usetex": True,
+	# 	"font.family": "serif",
+	# 	"font.serif": ["Palatino"],
+	# })
 
 	def make_step_type_plot(chart_title, filename_glob, group_labels, chart_filename, first_error_chart_filename, wrong_branch_lengths_filename, add_bar_legend=False, figure_height=2.4, first_error_figure_height=1.8, wrong_branch_lengths_figure_height=1.8, show_ylabel=True, show_first_error_ylabel=True, first_error_title=None):
 		# TODO: edit this!!
