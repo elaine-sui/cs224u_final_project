@@ -17,9 +17,12 @@ def separate_output_files_by_hops(output_df_path):
     base_filename = filename[:-4]
 
     # Split by aggregation type
-    aggregation_type, base_filename = base_filename.split("_consistency_")
-    parent_dir = os.path.join(parent_dir, 'summary', aggregation_type)
-    
+    if 'consistency' in base_filename:
+        aggregation_type, base_filename = base_filename.split("_consistency_")
+        parent_dir = os.path.join(parent_dir, 'summary', aggregation_type)
+    else:
+        parent_dir = os.path.join(parent_dir, 'summary')
+        
     os.makedirs(parent_dir, exist_ok=True)
 
     for hop, df in zip(hops, [output_df_1hop, output_df_3hop, output_df_5hop]):
