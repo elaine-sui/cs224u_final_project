@@ -14,11 +14,13 @@ def separate_output_files_by_hops(output_df_path):
     output_df_5hop = output_df[output_df['num_hops'] == 5]
 
     parent_dir, filename = os.path.split(output_df_path)
-    parent_dir = os.path.join(parent_dir, 'summary')
+    base_filename = filename[:-4]
+
+    # Split by aggregation type
+    aggregation_type, base_filename = base_filename.split("_consistency_")
+    parent_dir = os.path.join(parent_dir, 'summary', aggregation_type)
     
     os.makedirs(parent_dir, exist_ok=True)
-
-    base_filename = filename[:-4]
 
     for hop, df in zip(hops, [output_df_1hop, output_df_3hop, output_df_5hop]):
         filename = os.path.join(parent_dir, base_filename + f"_{hop}hop.pkl")
@@ -37,7 +39,7 @@ if __name__ == '__main__':
     ]
 
     paths = [os.path.join("prontoqa_output/fictional/converted", p) for p in paths]
-    
+
     # all the paths in the "aggregated" folder
     paths2 = glob("prontoqa_output/fictional/aggregated/*.pkl")
     paths.extend(paths2)
