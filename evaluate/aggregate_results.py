@@ -38,8 +38,10 @@ MERGE_ANSWER_TYPES = ['hard', 'soft']
 MERGE_COT_TYPES = ['intersection', 'union', 'longest', 'majority', 'none']
 PATH_SELECTION_TYPES = ['longest', 'shortest', 'heaviest', 'none']
 
-def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type, path_selection):
+def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_majority_answer, merge_cot_type, path_selection):
     out_folder = os.path.join(OUT_FOLDER, aggregation_type)
+    if merge_cot_of_majority_answer:
+        out_folder = os.path.join(out_folder, "merge_cot_of_majority_answer")
     os.makedirs(out_folder, exist_ok=True)
     out_file = os.path.join(out_folder, f'merge_answer_{merge_answer_type}_merge_cot_{merge_cot_type}_path_select_{path_selection}.pkl')
 
@@ -51,16 +53,19 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_typ
         ]
     elif aggregation_type == "direction":
         df_paths = [
+            FILES['baseline_seed1234'],
             FILES['forward_0'], 
             FILES['backward_0']
         ]
     elif aggregation_type == "forward_negation":
         df_paths = [
+            FILES['baseline_seed1234'],
             FILES['forward_0'],
             FILES['forward_neg']
         ]
     elif aggregation_type == "backward_negation":
         df_paths = [
+            FILES['baseline_seed1234'],
             FILES['backward_0'],
             FILES['backward_neg']
         ]
@@ -82,12 +87,14 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_typ
             FILES['forward_1'],
             FILES['forward_2'],
             FILES['forward_neg'],
+            FILES['forward_neg'],
         ]
     elif aggregation_type == "backward_all":
         df_paths = [
             FILES['backward_0'],
             FILES['backward_1'],
             FILES['backward_2'],
+            FILES['backward_neg'],
             FILES['backward_neg'],
         ]
     elif aggregation_type == "all":
@@ -100,16 +107,23 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_typ
 
     return df_paths, out_file
 
-def aggregate(aggregation_type, merge_answer_type, merge_cot_type, path_selection):
-    df_paths, out_file = get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type, path_selection)
+def aggregate(aggregation_type, merge_answer_type, merge_cot_of_majority_answer, merge_cot_type, path_selection):
+    df_paths, out_file = get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_majority_answer, merge_cot_type, path_selection)
 
-    merge_dfs(df_paths, merge_answer_type, merge_cot_type, path_selection, out_file)
-
+    merge_dfs(
+        output_dfs_paths=df_paths,
+        merge_answer_type=merge_answer_type,
+        merge_cot_of_majority_answer=merge_cot_of_majority_answer,
+        merge_cot_type=merge_cot_type,
+        path_selection=path_selection,
+        out_file=out_file,
+    )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--aggregation_type", type=str, choices=AGGREGATION_TYPES)
     parser.add_argument("--merge_answer_type", type=str, choices=MERGE_ANSWER_TYPES)
+    parser.add_argument("--merge_cot_of_majority_answer", action="store_true")
     parser.add_argument("--merge_cot_type", type=str, choices=MERGE_COT_TYPES)
     parser.add_argument("--path_selection", type=str, choices=PATH_SELECTION_TYPES)
 
@@ -119,4 +133,10 @@ if __name__ == '__main__':
         print("Path selection type heaviest requires merge cot type to be none")
         exit(1)
 
-    aggregate(args.aggregation_type, args.merge_answer_type, args.merge_cot_type, args.path_selection)
+    aggregate(
+        aggregation_type=args.aggregation_type, 
+        merge_answer_type=args.merge_answer_type, 
+        merge_cot_of_majority_answer=args.merge_cot_of_majority_answer,
+        merge_cot_type=args.merge_cot_type, 
+        path_selection=args.path_selection,
+    )

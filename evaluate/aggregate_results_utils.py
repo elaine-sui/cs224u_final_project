@@ -397,6 +397,7 @@ def merge_cots(
 def merge_dfs(
     output_dfs_paths,
     merge_answer_type,
+    merge_cot_of_majority_answer,
     merge_cot_type,
     path_selection,
     out_file,
@@ -487,17 +488,23 @@ def merge_dfs(
         facts_and_rules = rows[0]["test_example"].item()["question"]
 
         print(f"Query: {query}")
-        print(f"Predicted CoTs: {predicted_cots}")
 
         merged_answer = merge_answers(
             predicted_answers, predicted_cots, merge_type=merge_answer_type
         )
+
+        if merge_cot_of_majority_answer:
+            majority_answer_indices = [i for i in range(len(predicted_answers)) if predicted_answers[i] == merged_answer]
+            predicted_cots = [predicted_cots[i] for i in majority_answer_indices]
+
+        print(f"Predicted CoTs: {predicted_cots}")
+
         merged_cot, graph = merge_cots(
             predicted_cots,
             facts_and_rules,
             query,
             merge_type=merge_cot_type,
-            path_selection=path_selection,
+            path_selection=path_selection
         )
 
         print(f"Merged CoT: {merged_cot}")
