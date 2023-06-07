@@ -23,11 +23,17 @@ PROMPT_TYPES = ["forward", "backward", "baseline"]
 
 def get_functions(args):
     if args.prompt_type == "forward":
-        template = prompts.forward_template()
+        if args.lets_think_step_by_step:
+            template = prompts.forward_ltsbs_template()
+        else:
+            template = prompts.forward_template()
         get_demos = utils.get_demos_forward_cot
         get_test_answer = utils.get_test_answer_forward_cot
     elif args.prompt_type == "backward":
-        template = prompts.backward_template()
+        if args.lets_think_step_by_step:
+            template = prompts.backward_ltsbs_template()
+        else:
+            template = prompts.backward_template()
         get_demos = utils.get_demos_backward_cot
         get_test_answer = utils.get_test_answer_backward_cot
     elif args.prompt_type == "baseline":
@@ -58,6 +64,13 @@ def parse_args():
         "-n",
         action="store_true",
         help="whether to negate query",
+        default=False,
+    )
+    parser.add_argument(
+        "--lets-think-step-by-step",
+        "-ltsbs",
+        action="store_true",
+        help="whether to add Lets think step by step to query",
         default=False,
     )
     parser.add_argument(
@@ -193,6 +206,8 @@ def main(args):
     filename = args.prompt_type
     if args.negate:
         filename += "_negated"
+    if args.lets_think_step_by_step:
+        filename += "_ltsbs"
     if args.randomized_order:
         filename += "_randomized_order"
 
