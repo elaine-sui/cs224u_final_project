@@ -36,10 +36,12 @@ AGGREGATION_TYPES = [
 
 MERGE_ANSWER_TYPES = ['hard', 'soft']
 MERGE_COT_TYPES = ['intersection', 'union', 'longest', 'majority', 'none']
-PATH_SELECTION_TYPES = ['longest', 'shortest', 'heaviest']
+PATH_SELECTION_TYPES = ['longest', 'shortest', 'heaviest', 'none']
 
 def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_type, path_selection):
-    out_file = os.path.join(OUT_FOLDER, f'{aggregation_type}_consistency_merge_answer_{merge_answer_type}_merge_cot_{merge_cot_type}_path_select_{path_selection}.pkl')
+    out_folder = os.path.join(OUT_FOLDER, aggregation_type)
+    os.makedirs(out_folder, exist_ok=True)
+    out_file = os.path.join(out_folder, f'merge_answer_{merge_answer_type}_merge_cot_{merge_cot_type}_path_select_{path_selection}.pkl')
 
     if aggregation_type == "baseline":
         df_paths = [ 

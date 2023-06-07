@@ -379,15 +379,17 @@ def merge_cots(
     print(f"After merging (before ordering): {merged_cot}")
 
     # Re-order merged CoT steps
-    ## Create reasoning graph
-    graph, parts, query_part, cot_steps = create_reasoning_graph(
-        merged_cot, facts_and_rules, query
-    )
+    graph = None
+    if path_selection != "none":
+        ## Create reasoning graph
+        graph, parts, query_part, cot_steps = create_reasoning_graph(
+            merged_cot, facts_and_rules, query
+        )
 
-    ## Select appropriate path through the graph
-    merged_cot = select_path_from_reasoning_graph(
-        graph, parts, query_part, cot_steps, path_selection=path_selection
-    )
+        ## Select appropriate path through the graph
+        merged_cot = select_path_from_reasoning_graph(
+            graph, parts, query_part, cot_steps, path_selection=path_selection
+        )
 
     return merged_cot, graph
 
