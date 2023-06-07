@@ -12,7 +12,7 @@ def get_num_nodes(G):
 
 
 def num_connected_components(G):
-    return nx.number_connected_components(G)
+    return len(list(nx.strongly_connected_components(G)))
 
 
 def get_all_paths(G, source):
@@ -39,7 +39,7 @@ def get_all_paths(G, source):
 def get_mean_degree(G, weighted=False):
     agg = []
     iter = G.degree(weight="weight") if weighted else G.degree()
-    for node, deg in iter.items():
+    for node, deg in iter:
         agg.append(deg)
     return np.mean(agg)
 
@@ -47,7 +47,7 @@ def get_mean_degree(G, weighted=False):
 def get_max_degree(G, weighted=False):
     max_node, max_deg = None, -1
     iter = G.degree(weight="weight") if weighted else G.degree()
-    for node, deg in iter.items():
+    for node, deg in iter:
         if deg > max_deg:
             max_deg = deg
             max_node = node
@@ -66,7 +66,7 @@ def find_bottleneck_nodes(G, k=5):
     """
     Nodes with most paths going through them
     """
-    d = G.degree(weight="weight")
+    d = dict(G.degree(weight="weight"))
     return sorted(d.items(), key=lambda item: item[1], reverse=True)[:k]
 
 
@@ -74,8 +74,8 @@ def find_isolated_nodes(G, k=5):
     """
     Nodes with fewest paths going through them
     """
-    d = G.degree(weight="weight")
-    return sorted(d.items(), key=lambda item: -item[1])[:k]
+    d = dict(G.degree(weight="weight"))
+    return sorted(d.items(), key=lambda item: item[1])[:k]
 
 
 def get_avg_path_length(G, weighted=False):
@@ -85,7 +85,7 @@ def get_avg_path_length(G, weighted=False):
         if weighted:
             agg.append(weight)
         else:
-            agg.append(len(path))
+            agg.append(len(path) - 1)
     return np.mean(agg)
 
 
@@ -95,20 +95,7 @@ def get_cycles(G):
 
 def get_unique_paths_from_source(G, source):
     paths = get_all_paths(G, source)
-    # TODO: is there a reason this is not already unique?
-    # I think it is and we don't need the rest of this function
     return [p for (p, w) in paths]
-    # string_paths = []
-    # for path, weight in paths:
-    #     # converting path to string so we can hash into set
-    #     string_paths.append("-".join(path))
-    # string_paths = set(string_paths)
-
-    # unique_paths = []
-    # for sp in string_paths:
-    #     unique_paths.append(sp.split("-"))
-
-    # return unique_paths
 
 
 def path_weight_dist(G, source, dest):
@@ -127,7 +114,7 @@ def num_paths(G, source, dest):
 def shortcut_exists(G, source, dest):
     min_len, max_len = float("inf"), 0
     for path in nx.all_simple_paths(G, source, dest):
-        path_len = len(path)
+        path_len = len(path) - 1
         if path_len < min_len:
             min_len = path_len
         if path_len > max_len:
@@ -136,3 +123,32 @@ def shortcut_exists(G, source, dest):
         return True, min_len
     else:
         return False, None
+
+
+if __name__ == "__main__":
+    G = nx.DiGraph()
+    nx.add_path(G, [0, 1, 2, 3])
+    nx.add_path(G, [0, 3])
+    nx.add_path(G, [4, 5])
+    G[0][1]["weight"] = 1
+    G[0][3]["weight"] = 5
+    G[1][2]["weight"] = 2
+    G[2][3]["weight"] = 3
+    G[4][5]["weight"] = 5
+    print(get_num_edges(G))
+    print(get_num_nodes(G))
+    print(num_connected_components(G))
+    print(get_mean_degree(G))
+    print(get_max_degree(G))
+    print(get_mean_degree(G, weighted=True))
+    print(get_max_degree(G, weighted=True))
+    print(get_avg_edge_weight(G))
+    print(find_bottleneck_nodes(G, k=3))
+    print(find_isolated_nodes(G, k=3))
+    print(get_avg_path_length(G))
+    print(get_avg_path_length(G, weighted=True))
+    print(get_cycles(G))
+    print(get_unique_paths_from_source(G, 0))
+    print(path_weight_dist(G, 0, 3))
+    print(num_paths(G, 0, 3))
+    print(shortcut_exists(G, 0, 3))
