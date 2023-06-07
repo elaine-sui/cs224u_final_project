@@ -36,9 +36,14 @@ def convert_df_to_regular_format(output_df, out_file, backward=False, negated=Fa
         if negated and not conclusion_is_negated_query and negated_gold_cot_conclusion in predicted_proof:
             predicted_proof = flip_conclusion_in_cot(predicted_proof, negated_gold_cot_conclusion)
         
+        # Replace predictions with converted CoT and answer
+        row['predicted_cot'] = predicted_proof
+        row['predicted_answer'] = predicted_label
+
         # Reset expected answer and cot
         row['gold_answer'] = row['test_example']['answer']
         row['gold_cot'] = ' '.join(row['test_example']['chain_of_thought'])
+        
 
         new_df.append(row.to_dict())
 
@@ -71,16 +76,16 @@ def convert_all_dfs(folder_name):
         convert_df_to_regular_format(output_df, out_file, backward=backward, negated=negated)
 
 if __name__ == '__main__':
-    folder_name = "prontoqa_output/fictional"
-    path = os.path.join(folder_name, "baseline_1_shot_temp_0.7_seed_1234.pkl")
-    with open(path, 'rb') as f:
-        output_df = pickle.load(f)
+    # folder_name = "prontoqa_output/fictional"
+    # path = os.path.join(folder_name, "baseline_1_shot_temp_0.7_seed_1234.pkl")
+    # with open(path, 'rb') as f:
+    #     output_df = pickle.load(f)
 
-    converted_folder = os.path.join(folder_name, "converted")
-    filename = os.path.split(path)[1]
-    out_file = os.path.join(converted_folder, filename)
-    convert_df_to_regular_format(output_df, out_file, backward=False, negated=False)
-    # convert_all_dfs("prontoqa_output/fictional")
+    # converted_folder = os.path.join(folder_name, "converted")
+    # filename = os.path.split(path)[1]
+    # out_file = os.path.join(converted_folder, filename)
+    # convert_df_to_regular_format(output_df, out_file, backward=False, negated=False)
+    convert_all_dfs("prontoqa_output/fictional")
 
 
     
