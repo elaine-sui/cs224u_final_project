@@ -10,7 +10,7 @@ from path_selection import run_path_selection
 import sys
 
 sys.path.append(os.getcwd())
-from utils import get_all_cot_steps, clean_cot_reasoning, clean_answer
+from utils import get_all_cot_steps
 
 """
 Baseline (1234, 5678, 910)

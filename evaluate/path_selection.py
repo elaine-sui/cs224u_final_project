@@ -18,9 +18,7 @@ def separate_fol_parse_into_parts(fol_parse):
             try:
                 part = (fol_object.args[0].constant, fol_object.function)
             except:
-                import pdb
-
-                pdb.set_trace()
+                import pdb; pdb.set_trace()
         elif isinstance(fol_object, fol.FOLNot):  # is not
             if isinstance(fol_object.operand, fol.FOLAnd):
                 part0 = fol_object.operand.operands[0].args[0].constant

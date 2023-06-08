@@ -24,7 +24,10 @@ FILES = {
         'forward_ltsbs_0.7': 'forward_ltsbs_1_shot_temp_0.7_seed_1234.pkl',
         'forward_0.7': 'forward_1_shot_temp_0.7_seed_1234.pkl',
         'forward_neg_ltsbs': 'forward_negated_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
-        'forward_neg_ltsbs_0.7': 'forward_negated_ltsbs_1_shot_temp_0.7_seed_1234.pkl'
+        'forward_neg_ltsbs_0.7': 'forward_negated_ltsbs_1_shot_temp_0.7_seed_1234.pkl',
+        'backward_ltsbs': 'backward_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
+        'backward_neg_ltsbs': 'forward_negated_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
+
     }
 
 AGGREGATION_TYPES = [
@@ -65,7 +68,7 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
         ]
     elif aggregation_type == "single_backward":
         df_paths = [
-            FILES['backward_0']
+            FILES['backward_ltsbs']
         ]
     elif aggregation_type == "single_forward_neg":
         df_paths = [
@@ -73,7 +76,7 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
         ]
     elif aggregation_type == "single_backward_neg":
         df_paths = [
-            FILES['backward_neg']
+            FILES['backward_neg_ltsbs']
         ]
     elif aggregation_type == "baseline":
         df_paths = [ 
@@ -84,20 +87,20 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
     elif aggregation_type == "direction":
         df_paths = [
             FILES['baseline_seed1234'],
-            FILES['forward_0'], 
-            FILES['backward_0']
+            FILES['forward_ltsbs'], 
+            FILES['backward_ltsbs']
         ]
     elif aggregation_type == "forward_negation":
         df_paths = [
             FILES['baseline_seed1234'],
-            FILES['forward_0'],
-            FILES['forward_neg']
+            FILES['forward_ltsbs'],
+            FILES['forward_neg_ltsbs']
         ]
     elif aggregation_type == "backward_negation":
         df_paths = [
             FILES['baseline_seed1234'],
-            FILES['backward_0'],
-            FILES['backward_neg']
+            FILES['backward_ltsbs'],
+            FILES['backward_neg_ltsbs']
         ]
     elif aggregation_type == "forward_randomized_order":
         df_paths = [
@@ -113,27 +116,30 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
         ]
     elif aggregation_type == "forward_all":
         df_paths = [
-            FILES['forward_0'],
+            FILES['forward_ltsbs'],
             FILES['forward_1'],
             FILES['forward_2'],
-            FILES['forward_neg'],
-            FILES['forward_neg'],
+            FILES['forward_neg_ltsbs'],
+            FILES['forward_neg_ltsbs'],
         ]
     elif aggregation_type == "backward_all":
         df_paths = [
-            FILES['backward_0'],
+            FILES['backward_ltsbs'],
             FILES['backward_1'],
             FILES['backward_2'],
-            FILES['backward_neg'],
-            FILES['backward_neg'],
+            FILES['backward_neg_ltsbs'],
+            FILES['backward_neg_ltsbs'],
         ]
     elif aggregation_type == "all":
-        df_paths = list(FILES.values())
+        df_paths = [
+            FILES['baseline_seed1234'],
+            FILES['forward_ltsbs'],
+            FILES['forward_neg_ltsbs'],
+            FILES['backward_ltsbs'],
+            FILES['backward_neg_ltsbs'],
+        ]
     
-    if aggregation_type != "baseline":
-        df_paths = [os.path.join(ROOT, 'converted', path) for path in df_paths]
-    else:
-        df_paths = [os.path.join(ROOT, path) for path in df_paths]
+    df_paths = [os.path.join(ROOT, 'converted', path) for path in df_paths]
 
     return df_paths, out_file
 
