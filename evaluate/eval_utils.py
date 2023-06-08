@@ -43,6 +43,8 @@ def get_simple_eval_metrics(path, restrict_type='none'):
         output_df = restrict_to_not_only(output_df)
     elif restrict_type == "no_not_only":
         output_df = restrict_to_no_not_only(output_df)
+    
+    # print("Output df size:", len(output_df))
 
     output_df['label_acc'] = output_df.apply(lambda x: metrics.strict_acc(x['predicted_answer'], x['gold_answer']), axis=1)
     output_df['cot_acc'] = output_df.apply(lambda x: metrics.strict_acc(x['predicted_cot'], x['gold_cot']), axis=1)
@@ -64,7 +66,7 @@ def get_simple_eval_metrics(path, restrict_type='none'):
         "avg_cot_f1": avg_cot_f1
     }
 
-def get_metrics_dict_for_path_selection_type(path_glob, path_selection, restrict_type):
+def get_metrics_dict_for_path_selection_type(path_glob, path_selection, restrict_type='none'):
     metrics_dict = {} # {aggregation_type: {merge_cot_type: metrics_dict} }
     aggregation_types = []
     merge_cot_types = []

@@ -1,7 +1,7 @@
 import os
 import argparse
 
-from aggregate_results_utils import merge_dfs
+from aggregate_results_utils import merge_dfs, merge_unnegated_negated_dfs
 
 ROOT = '/sailhome/esui/cs224u_final_project/prontoqa_output/fictional'
 
@@ -45,6 +45,8 @@ AGGREGATION_TYPES = [
     "single_backward",
     "single_forward_neg",
     "single_backward_neg",
+    "double_forward_negation",
+    "double_backward_negation"
 ]
 
 MERGE_ANSWER_TYPES = ['hard', 'soft']
@@ -76,6 +78,16 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
         ]
     elif aggregation_type == "single_backward_neg":
         df_paths = [
+            FILES['backward_neg_ltsbs']
+        ]
+    elif aggregation_type == "double_forward_negation":
+        df_paths = [
+            FILES['forward_ltsbs'],
+            FILES['forward_neg_ltsbs']
+        ]
+    elif aggregation_type == "double_backward_negation":
+        df_paths = [
+            FILES['backward_ltsbs'],
             FILES['backward_neg_ltsbs']
         ]
     elif aggregation_type == "baseline":
@@ -145,15 +157,22 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
 
 def aggregate(aggregation_type, merge_answer_type, merge_cot_of_majority_answer, merge_cot_type, path_selection):
     df_paths, out_file = get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_majority_answer, merge_cot_type, path_selection)
-
-    merge_dfs(
-        output_dfs_paths=df_paths,
-        merge_answer_type=merge_answer_type,
-        merge_cot_of_majority_answer=merge_cot_of_majority_answer,
-        merge_cot_type=merge_cot_type,
-        path_selection=path_selection,
-        out_file=out_file,
-    )
+    
+    if "double" in aggregation_type:
+        merge_unnegated_negated_dfs(
+            output_dfs_paths=df_paths,
+            path_selection=path_selection,
+            out_file=out_file
+        )
+    else:
+        merge_dfs(
+            output_dfs_paths=df_paths,
+            merge_answer_type=merge_answer_type,
+            merge_cot_of_majority_answer=merge_cot_of_majority_answer,
+            merge_cot_type=merge_cot_type,
+            path_selection=path_selection,
+            out_file=out_file,
+        )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

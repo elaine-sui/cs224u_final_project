@@ -222,7 +222,7 @@ def merge_dfs(
             facts_and_rules,
             query,
             merge_type=merge_cot_type,
-            path_selection=path_selection
+            path_selection=path_selection,
         )
 
         print(f"Merged CoT: {merged_cot}")
@@ -230,6 +230,85 @@ def merge_dfs(
 
         # Create new row with merged answer and cot
         row = rows[0].iloc[0].to_dict()
+        row["predicted_answer"] = merged_answer
+        row["predicted_cot"] = merged_cot
+        row["all_predicted_cots"] = predicted_cots
+        row["all_predicted_answers"] = predicted_answers
+        row["graph"] = graph
+
+        merged_df.append(row)
+        print("=" * 80 + "\n")
+
+    # Save to pkl
+    merged_df = pd.DataFrame(merged_df)
+
+    with open(out_file, "wb") as f:
+        pickle.dump(merged_df, f)
+
+    print(f"Dumped merged df at {out_file}")
+
+    return merged_df
+
+def merge_unnegated_negated_dfs(
+    output_dfs_paths,
+    path_selection,
+    out_file,
+):
+    # Merge df predicted answers and chains-of-thought
+
+    output_dfs = {}
+    for path in output_dfs_paths:
+        with open(path, "rb") as f:
+            df = pickle.load(f)
+        
+        if "_negated_" in path:
+            output_dfs["negated"] = df
+        else:
+            output_dfs["unnegated"] = df
+
+    all_ids = output_dfs["negated"].id.to_list()
+
+    merged_df = []
+
+    for id in all_ids:
+        rows = {k: df[df["id"] == id] for k, df in output_dfs.items()}
+
+        # assert expected answers and cots are the same
+        gold_answers = [row["gold_answer"].item() for row in rows.values()]
+        gold_cots = [row["gold_cot"].item() for row in rows.values()]
+
+        assert len(set(gold_answers)) == 1
+        assert len(set(gold_cots)) == 1
+
+        predicted_answers = {k: row["predicted_answer"].item() for k, row in rows.items()}
+        predicted_cots = {k: row["predicted_cot"].item() for k, row in rows.items()}
+
+        query = rows["negated"]["test_example"].item()["query"].split(":")[-1].strip()
+
+        facts_and_rules = rows["negated"]["test_example"].item()["question"]
+
+        print(f"Query: {query}")
+
+        if "not" in query:
+            merged_answer = predicted_answers["negated"] # double negation cancels out
+            merged_cot = predicted_cots["negated"]
+        else:
+            merged_answer = predicted_answers["unnegated"]
+            merged_cot = predicted_cots["unnegated"]
+
+        print(f"Predicted CoTs: {predicted_cots}")
+
+        # Path selection
+        graph = None
+        if path_selection != "none":
+            # Run path selection
+            merged_cot, graph = run_path_selection(merged_cot, facts_and_rules, query, path_selection=path_selection)
+
+        print(f"Merged CoT: {merged_cot}")
+        print(f"Gold CoT: {gold_cots[0]}")
+
+        # Create new row with merged answer and cot
+        row = rows["negated"].iloc[0].to_dict()
         row["predicted_answer"] = merged_answer
         row["predicted_cot"] = merged_cot
         row["all_predicted_cots"] = predicted_cots
