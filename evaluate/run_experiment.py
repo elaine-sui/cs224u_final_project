@@ -8,7 +8,6 @@ sys.path.append(os.getcwd())
 import fol
 from syntax import parse_sentence, UnableToParseError
 from morphology import morphology
-from utils import reverse_sentences, negate_query, flip_conclusion_in_cot
 
 bad_patterns = []
 

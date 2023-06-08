@@ -1,4 +1,6 @@
 import random
+import re
+from copy import copy
 
 import dsp
 
@@ -28,37 +30,39 @@ def reverse_sentences(text):
     return text
 
 
-def flip_conclusion_in_cot(proof, negated_gold_cot_conclusion):
+def maybe_flip_conclusion_in_cot(proof, conclusion_should_have_not, query):
+    # if the conclusion should have a not but the conclusion in the predicted cot doesn't have a not
+    # if the conclusion should not have a not but the conclusion in the predicted cot has a not
+    # then flip conclusion if in the predicted cot
+    old_proof = copy(proof)
     if proof[-1] == ".":
         proof = proof[:-1]
 
     # Flip the final conclusion in chain-of-thought
     proof = proof.split('. ')
-    negated_gold_cot_conclusion = negated_gold_cot_conclusion[:-1] # remove period
 
-    idx = [i for i, p in enumerate(proof) if negated_gold_cot_conclusion in p][0]
+    negated_query = negate_query(query)
 
-    proof[idx] = negate_query(proof[idx])
-        
+    if query in proof: # conclusion in pred cot is the same as the query
+        if ("not" in query and not conclusion_should_have_not) \
+            or ("not" not in query and conclusion_should_have_not):
+            # flip conclusion (remove the not)
+                idx = [i for i, p in enumerate(proof) if query in p][0]
+        else:
+            return old_proof
+    elif negated_query in proof: # conclusion in pred cot is the same as the negated query
+        if ("not" in negated_query and not conclusion_should_have_not) \
+            or ("not" not in negated_query and conclusion_should_have_not):
+            # flip conclusion (remove the not)
+                idx = [i for i, p in enumerate(proof) if negated_query in p][0]
+        else:
+            return old_proof
+    else:
+        return old_proof
+
+    proof[idx] = negate_query(proof[idx])   
     proof = '. '.join(proof).strip()
     proof += "."
-    return proof
-
-
-def remove_answer_from_proof(proof):
-    if proof[-1] == '.':
-        proof = proof[:-1]
-    proof = proof.split('. ')
-
-    while "True" in proof:
-        proof.remove("True")
-    
-    while "False" in proof:
-        proof.remove("False")
-
-    proof = '. '.join(proof).strip()
-    proof += "."
-
     return proof
 
 
@@ -190,3 +194,55 @@ def print_template_example(
     )
 
     print(template(ex))
+
+
+def clean_cot_reasoning(cot):
+    # Remove all occurrences of "Therefore, ", double negatives from predicted_cots, etc.
+    clean_cot = re.sub("Therefore, ", "", cot)
+    clean_cot = re.sub("Therefore, ", "", clean_cot)
+    clean_cot = re.sub("However, ", "", clean_cot)
+    clean_cot = re.sub("However ", "", clean_cot)
+    clean_cot = re.sub("not not ", "", clean_cot)
+    clean_cot = re.sub("Since ", "", clean_cot)
+    clean_cot = re.sub("But ", "", clean_cot)
+    clean_cot = re.sub("but ", "", clean_cot)
+    clean_cot = re.sub(" and ", ". ", clean_cot)
+    clean_cot = re.sub(",", ". ", clean_cot)
+    clean_cot = re.sub("False.", "", clean_cot)
+    clean_cot = re.sub("True.", "", clean_cot)
+    clean_cot = re.sub("  ", " ", clean_cot)
+
+    # Dealing with "or" ("Alex is not a numpus or a jompus" --> Alex is not a numpus; Alex is not a jompus
+    sentences_with_or = re.findall(
+        r"([A-Z][a-z\s]*) or ([A-Za-z\s]*).", clean_cot
+    )
+
+    if len(sentences_with_or) > 0:
+        for sentence in sentences_with_or:
+            intro_idx_end = sentence[0].index(" a ")
+            intro = sentence[0][:intro_idx_end]
+            parts = [sentence[0], intro + " " + sentence[1]]
+            combined = ". ".join(parts) + "."
+
+            # add combined sentence at the end
+            clean_cot += combined
+
+        # remove all "or" sentences
+        if clean_cot[-1] == ".":
+            clean_cot = clean_cot[:-1]
+
+        cot_steps = clean_cot.split(". ")
+        for s in cot_steps:
+            if " or " in s:
+                cot_steps.remove(s)
+
+        # recombine
+        clean_cot = ". ".join(cot_steps) + "."
+    
+    return clean_cot.strip()
+
+def clean_answer(answer):
+    # Remove periods from answers
+    if answer[-1] == ".":
+        answer = answer[:-1]
+    return answer
