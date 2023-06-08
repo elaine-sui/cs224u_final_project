@@ -17,7 +17,7 @@
 #     done
 # done
 
-AGGREGATION_TYPES=("baseline" "direction" "forward_negation" "backward_negation" "forward_randomized_order" "backward_randomized_order" "forward_all" "backward_all" "all")
+AGGREGATION_TYPES=("single_forward_neg")
 MERGE_ANSWER_TYPES=('hard')
 MERGE_COT_TYPES=('intersection' 'union' 'longest' 'majority' 'none')
 PATH_SELECTION_TYPES=('longest')

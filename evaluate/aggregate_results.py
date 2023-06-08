@@ -20,6 +20,11 @@ FILES = {
         'baseline_seed1234': 'baseline_1_shot_temp_0.7_seed_1234.pkl',
         'baseline_seed5678': 'baseline_1_shot_temp_0.7_seed_5678.pkl',
         'baseline_seed910': 'baseline_1_shot_temp_0.7_seed_910.pkl',
+        'forward_ltsbs': 'forward_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
+        'forward_ltsbs_0.7': 'forward_ltsbs_1_shot_temp_0.7_seed_1234.pkl',
+        'forward_0.7': 'forward_1_shot_temp_0.7_seed_1234.pkl',
+        'forward_neg_ltsbs': 'forward_negated_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
+        'forward_neg_ltsbs_0.7': 'forward_negated_ltsbs_1_shot_temp_0.7_seed_1234.pkl'
     }
 
 AGGREGATION_TYPES = [
@@ -31,7 +36,12 @@ AGGREGATION_TYPES = [
     "backward_randomized_order", 
     "forward_all", 
     "backward_all",
-    "all"
+    "all",
+    "single_baseline",
+    "single_forward",
+    "single_backward",
+    "single_forward_neg",
+    "single_backward_neg",
 ]
 
 MERGE_ANSWER_TYPES = ['hard', 'soft']
@@ -45,7 +55,27 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
     os.makedirs(out_folder, exist_ok=True)
     out_file = os.path.join(out_folder, f'merge_answer_{merge_answer_type}_merge_cot_{merge_cot_type}_path_select_{path_selection}.pkl')
 
-    if aggregation_type == "baseline":
+    if aggregation_type == "single_baseline":
+        df_paths = [
+            FILES['baseline_seed1234']
+        ]
+    elif aggregation_type == "single_forward":
+        df_paths = [
+            FILES['forward_ltsbs']
+        ]
+    elif aggregation_type == "single_backward":
+        df_paths = [
+            FILES['backward_0']
+        ]
+    elif aggregation_type == "single_forward_neg":
+        df_paths = [
+            FILES['forward_neg_ltsbs']
+        ]
+    elif aggregation_type == "single_backward_neg":
+        df_paths = [
+            FILES['backward_neg']
+        ]
+    elif aggregation_type == "baseline":
         df_paths = [ 
             FILES['baseline_seed1234'],
             FILES['baseline_seed5678'],

@@ -17,12 +17,7 @@ def separate_output_files_by_hops(output_df_path):
     base_filename = filename[:-4]
 
     # Split by aggregation type
-    if 'consistency' in base_filename:
-        aggregation_type, base_filename = base_filename.split("_consistency_")
-        parent_dir = os.path.join(parent_dir, 'summary', aggregation_type)
-    else:
-        parent_dir = os.path.join(parent_dir, 'summary')
-        
+    parent_dir = os.path.join(parent_dir, 'summary')
     os.makedirs(parent_dir, exist_ok=True)
 
     for hop, df in zip(hops, [output_df_1hop, output_df_3hop, output_df_5hop]):
@@ -34,18 +29,8 @@ def separate_output_files_by_hops(output_df_path):
         print(f"Dumped num_hop={hop} to {filename}")
 
 if __name__ == '__main__':
-    # Forward single 
-    paths = [
-        'backward_1_shot_temp_0.0_seed_1234.pkl',
-        'forward_1_shot_temp_0.0_seed_1234.pkl',
-        'baseline_1_shot_temp_0.7_seed_1234.pkl',
-    ]
-
-    paths = [os.path.join("prontoqa_output/fictional/converted", p) for p in paths]
-
     # all the paths in the "aggregated" folder
-    paths2 = glob("prontoqa_output/fictional/aggregated/*.pkl")
-    paths.extend(paths2)
+    paths = glob("prontoqa_output/fictional/aggregated/**/*.pkl")
 
     for path in paths:
         print(f"Splitting file {path}")
