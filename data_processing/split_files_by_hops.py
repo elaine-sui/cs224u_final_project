@@ -14,6 +14,7 @@ def separate_output_files_by_hops(output_df_path):
     output_df_5hop = output_df[output_df['num_hops'] == 5]
 
     parent_dir, filename = os.path.split(output_df_path)
+
     base_filename = filename[:-4]
 
     # Split by aggregation type
@@ -31,6 +32,17 @@ def separate_output_files_by_hops(output_df_path):
 if __name__ == '__main__':
     # all the paths in the "aggregated" folder
     paths = glob("prontoqa_output/fictional/aggregated/**/*.pkl")
+    paths2 = glob("prontoqa_output/fictional/aggregated/***/merge_cot_of_majority_answer/*.pkl")
+    paths3 = glob("prontoqa_output/fictional/converted/*.pkl")
+
+    paths.extend(paths2)
+    paths.extend(paths3)
+
+    for path in paths:
+        print(f"Splitting file {path}")
+        separate_output_files_by_hops(path)
+    
+    paths = glob("prontoqa_output/fictional/aggregated/***/merge_cot_of_majority_answer/*.pkl")
 
     for path in paths:
         print(f"Splitting file {path}")

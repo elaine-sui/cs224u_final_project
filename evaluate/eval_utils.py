@@ -66,23 +66,36 @@ def get_simple_eval_metrics(path, restrict_type='none'):
         "avg_cot_f1": avg_cot_f1
     }
 
-def get_metrics_dict_for_path_selection_type(path_glob, path_selection, restrict_type='none'):
+
+def get_metrics_dict_for_path_selection_type(path_glob, path_selection, restrict_type='none', restrict_aggregation_types=[]):
     metrics_dict = {} # {aggregation_type: {merge_cot_type: metrics_dict} }
     aggregation_types = []
     merge_cot_types = []
     for filename in glob(path_glob):
         # print(p)
-        if "summary" in filename:
+        if "merge_cot_of_majority_answer" in filename:
+            aggregation_type = Path(filename).parts[-4]
+        elif "summary" in filename:
             aggregation_type = Path(filename).parts[-3]
         else:
             aggregation_type = Path(filename).parts[-2]
 
-        if aggregation_type not in aggregation_types:
-            aggregation_types.append(aggregation_type)
-            metrics_dict[aggregation_type] = {}
+        if len(restrict_aggregation_types) > 0:
+            if aggregation_type in restrict_aggregation_types:
+                if aggregation_type not in metrics_dict:
+                    aggregation_types.append(aggregation_type)
+                    metrics_dict[aggregation_type] = {}
+            else:
+                continue
+        else:
+            if aggregation_type not in aggregation_types:
+                aggregation_types.append(aggregation_type)
+                metrics_dict[aggregation_type] = {}
 
-        merge_cot_type = re.findall(r'merge_cot_(.*)_path', filename)[0]
+        merge_cot_type = re.findall(r'merge_cot_([A-Za-z]+)_path', filename)[0]
         if merge_cot_type == 'none' and path_selection != "heaviest":
+            continue
+        elif path_selection == "heaviest" and merge_cot_type != "none":
             continue
         
         if merge_cot_type not in merge_cot_types:
@@ -91,6 +104,7 @@ def get_metrics_dict_for_path_selection_type(path_glob, path_selection, restrict
         # print(merge_cot_type)
 
         metrics_dict[aggregation_type][merge_cot_type] = get_simple_eval_metrics(filename, restrict_type=restrict_type)
+    
     return metrics_dict, aggregation_types, merge_cot_types
 
 def get_data_for_metric(metric, metrics_dict, aggregation_types, merge_cot_types):
@@ -126,9 +140,26 @@ def get_best_val_per_aggregation_type(data_df, aggregation_types, merge_cot_type
     for k, v in metrics:
         print(f"{k} max: {v}")
 
+
+def get_metric_name(metric):
+    if metric == "avg_label_acc":
+        metric = "Average Label Accuracy"
+    elif metric == "avg_cot_acc":
+        metric = "Average CoT Accuracy"
+    elif metric == "avg_cot_precision":
+        metric = "Average CoT Precision"
+    elif metric == "avg_cot_recall":
+        metric = "Average CoT Recall"
+    elif metric == "avg_cot_f1":
+        metric = "Average CoT F1"
+    
+    return metric
+
+
 def plot_bar_chart(metric, columns, metrics_dict, aggregation_types, merge_cot_types, title=None):
     data = get_data_for_metric(metric, metrics_dict, aggregation_types, merge_cot_types)
     # print(data)
+
     metrics_df = pd.DataFrame(
             columns=columns,
             data=data
@@ -137,11 +168,35 @@ def plot_bar_chart(metric, columns, metrics_dict, aggregation_types, merge_cot_t
     get_best_val_per_merge_type(metrics_df, merge_cot_types)
     get_best_val_per_aggregation_type(metrics_df, aggregation_types, merge_cot_types)
 
-    # plot grouped bar chart
+    legend = True
+    kind='barh'
+    if "label" in metric:
+        metrics_df = metrics_df[['Aggregation Type', merge_cot_types[0]]]
+        metrics_df = metrics_df.rename(columns={merge_cot_types[0]:''})
+
+        legend = False
+
+        # plot in sorted order
+        metrics_df = metrics_df.sort_values(by=[''])
+    # else:
+    #     metrics_df = metrics_df.sort_values(by=[''])
+    
+    metric = get_metric_name(metric)
     if title is None:
         title = metric
-    metrics_df.plot(x='Aggregation Type',
-            kind='bar',
-            stacked=False,
-            title=title
+
+    # plot grouped bar chart
+    ax = metrics_df.plot(
+        x='Aggregation Type',
+        xlabel=metric,
+        kind=kind,
+        stacked=False,
+        title=title,
+        legend=legend
     )
+
+    ax.legend(bbox_to_anchor=(1.0, 1.0))
+
+    if "Label" in metric:
+        for container in ax.containers:
+            ax.bar_label(container, fmt='%.2f')

@@ -9,28 +9,30 @@ OUT_FOLDER = os.path.join(ROOT, 'aggregated')
 os.makedirs(OUT_FOLDER, exist_ok=True)
 
 FILES = {
-        'forward_0': 'forward_1_shot_temp_0.0_seed_1234.pkl',
-        'forward_1': 'forward_randomized_order_1_shot_temp_0.0_seed_1234.pkl',
-        'forward_2': 'forward_randomized_order_1_shot_temp_0.0_seed_12345.pkl',
-        'backward_0': 'backward_1_shot_temp_0.0_seed_1234.pkl',
-        'backward_1': 'backward_randomized_order_1_shot_temp_0.0_seed_1234.pkl',
-        'backward_2': 'backward_randomized_order_1_shot_temp_0.0_seed_12345.pkl',
-        'forward_neg': 'forward_negated_1_shot_temp_0.0_seed_1234.pkl',
-        'backward_neg': 'backward_negated_1_shot_temp_0.0_seed_1234.pkl',
-        'baseline_seed1234': 'baseline_1_shot_temp_0.7_seed_1234.pkl',
+        'baseline_seed1234': 'baseline_1_shot_temp_0.0_seed_1234.pkl',
         'baseline_seed5678': 'baseline_1_shot_temp_0.7_seed_5678.pkl',
         'baseline_seed910': 'baseline_1_shot_temp_0.7_seed_910.pkl',
+        'baseline_neg': 'baseline_negated_1_shot_temp_0.0_seed_1234.pkl',
         'forward_ltsbs': 'forward_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
-        'forward_ltsbs_0.7': 'forward_ltsbs_1_shot_temp_0.7_seed_1234.pkl',
-        'forward_0.7': 'forward_1_shot_temp_0.7_seed_1234.pkl',
         'forward_neg_ltsbs': 'forward_negated_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
-        'forward_neg_ltsbs_0.7': 'forward_negated_ltsbs_1_shot_temp_0.7_seed_1234.pkl',
+        'forward_1': 'forward_ltsbs_randomized_order_1_shot_temp_0.0_seed_1234.pkl',
+        'forward_2': 'forward_ltsbs_randomized_order_1_shot_temp_0.0_seed_12345.pkl',
         'backward_ltsbs': 'backward_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
-        'backward_neg_ltsbs': 'forward_negated_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
-
+        'backward_neg_ltsbs': 'backward_negated_ltsbs_1_shot_temp_0.0_seed_1234.pkl',
+        'backward_1': 'backward_ltsbs_randomized_order_1_shot_temp_0.0_seed_1234.pkl',
+        'backward_2': 'backward_ltsbs_randomized_order_1_shot_temp_0.0_seed_12345.pkl',
     }
 
 AGGREGATION_TYPES = [
+    "single_baseline",
+    "single_forward",
+    "single_backward",
+    "single_baseline_neg",
+    "single_forward_neg",
+    "single_backward_neg",
+    "double_baseline_negation",
+    "double_forward_negation",
+    "double_backward_negation",
     "baseline",
     "direction", 
     "forward_negation", 
@@ -40,13 +42,6 @@ AGGREGATION_TYPES = [
     "forward_all", 
     "backward_all",
     "all",
-    "single_baseline",
-    "single_forward",
-    "single_backward",
-    "single_forward_neg",
-    "single_backward_neg",
-    "double_forward_negation",
-    "double_backward_negation"
 ]
 
 MERGE_ANSWER_TYPES = ['hard', 'soft']
@@ -64,6 +59,10 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
         df_paths = [
             FILES['baseline_seed1234']
         ]
+    elif aggregation_type == "single_baseline_neg":
+        df_paths = [
+            FILES['baseline_neg']
+        ]
     elif aggregation_type == "single_forward":
         df_paths = [
             FILES['forward_ltsbs']
@@ -79,6 +78,11 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
     elif aggregation_type == "single_backward_neg":
         df_paths = [
             FILES['backward_neg_ltsbs']
+        ]
+    elif aggregation_type == "double_baseline_negation":
+        df_paths = [
+            FILES['baseline_seed1234'],
+            FILES['baseline_neg']
         ]
     elif aggregation_type == "double_forward_negation":
         df_paths = [
@@ -116,13 +120,13 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
         ]
     elif aggregation_type == "forward_randomized_order":
         df_paths = [
-            FILES['forward_0'],
+            FILES['forward_ltsbs'],
             FILES['forward_1'],
             FILES['forward_2'],
         ]
     elif aggregation_type == "backward_randomized_order":
         df_paths = [
-            FILES['backward_0'],
+            FILES['backward_ltsbs'],
             FILES['backward_1'],
             FILES['backward_2'],
         ]
@@ -145,6 +149,8 @@ def get_df_paths_and_out_file(aggregation_type, merge_answer_type, merge_cot_of_
     elif aggregation_type == "all":
         df_paths = [
             FILES['baseline_seed1234'],
+            FILES['baseline_seed5678'],
+            FILES['baseline_neg'],
             FILES['forward_ltsbs'],
             FILES['forward_neg_ltsbs'],
             FILES['backward_ltsbs'],
